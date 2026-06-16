@@ -69,5 +69,30 @@ def init_schema(con) -> None:
 
 
 def _create_report_view(con) -> None:
-    # Placeholder until Task 4 fills in the scoring view.
-    pass
+    # Office-pool scoring: a=3 correct outcome, b=1 per correct team goal
+    # count, c=1 correct signed goal difference. Mirrors predict.score_prediction.
+    con.execute("""
+        CREATE OR REPLACE VIEW v_model_report AS
+        SELECT
+            m.match_id, m.date, m.home_team, m.away_team,
+            m.home_score AS actual_h, m.away_score AS actual_a,
+            p.pred_home_goals AS pred_h, p.pred_away_goals AS pred_a,
+            (sign(p.pred_home_goals - p.pred_away_goals)
+               = sign(m.home_score - m.away_score))::INT      AS outcome_ok,
+            (p.pred_home_goals = m.home_score)::INT
+               + (p.pred_away_goals = m.away_score)::INT       AS side_goals,
+            ((p.pred_home_goals - p.pred_away_goals)
+               = (m.home_score - m.away_score))::INT           AS gd_ok,
+            (p.pred_home_goals = m.home_score
+               AND p.pred_away_goals = m.away_score)::INT      AS exact_ok,
+            ( 3 * (sign(p.pred_home_goals - p.pred_away_goals)
+                     = sign(m.home_score - m.away_score))::INT
+            + 1 * (p.pred_home_goals = m.home_score)::INT
+            + 1 * (p.pred_away_goals = m.away_score)::INT
+            + 1 * ((p.pred_home_goals - p.pred_away_goals)
+                     = (m.home_score - m.away_score))::INT )    AS points
+        FROM matches m
+        JOIN predictions p
+          ON p.match_id = m.match_id AND p.kind = 'committed'
+        WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
+    """)
