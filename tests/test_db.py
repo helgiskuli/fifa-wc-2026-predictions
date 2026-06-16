@@ -222,3 +222,22 @@ def test_load_results_reads_from_db(tmp_path, monkeypatch):
     df = wcdata.load_results()
     assert {"home_team", "away_team", "home_score", "neutral"} <= set(df.columns)
     assert df.iloc[0]["home_team"] == "Spain"
+
+
+from scripts import run_schedule as rs
+
+
+def test_predictions_frame_shape():
+    rows = [{
+        "date": "2026-06-16", "home": "France", "away": "Senegal",
+        "pick": "1-0", "lam_h": 1.5, "lam_a": 1.1, "result": "H",
+        "P_result": 0.46, "P_home_g": 0.33, "P_away_g": 0.34, "P_gd": 0.23,
+        "EP": 2.29,
+    }]
+    df = rs.predictions_frame(rows)
+    assert df.loc[0, "match_id"] == "20260616-france-senegal"
+    assert df.loc[0, "pred_home_goals"] == 1
+    assert df.loc[0, "pred_away_goals"] == 0
+    assert df.loc[0, "outcome"] == "H"
+    assert set(["lam_h", "lam_a", "p_result", "p_home_g", "p_away_g",
+                "p_gd", "ep"]).issubset(df.columns)
