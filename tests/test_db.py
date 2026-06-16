@@ -241,3 +241,16 @@ def test_predictions_frame_shape():
     assert df.loc[0, "outcome"] == "H"
     assert set(["lam_h", "lam_a", "p_result", "p_home_g", "p_away_g",
                 "p_gd", "ep"]).issubset(df.columns)
+
+
+from scripts import commit_picks
+
+
+def test_match_ids_for_date_filters_unplayed(con):
+    con.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, source) VALUES "
+        "('20260616-france-senegal', DATE '2026-06-16', 'France', 'Senegal', 'wc2026'),"
+        "('20260617-england-croatia', DATE '2026-06-17', 'England', 'Croatia', 'wc2026')"
+    )
+    ids = commit_picks.match_ids_for_date(con, "2026-06-16")
+    assert ids == ["20260616-france-senegal"]
