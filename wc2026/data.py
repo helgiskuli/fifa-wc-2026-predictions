@@ -1,9 +1,9 @@
 """Step 1: loader + preprocessing.
 
-Reads the martj42/international_results `results.csv` (live each call, so
-manual top-ups during the tournament flow straight through), filters to a
-recent competitive window, and attaches a per-match weight combining
-friendly down-weighting with exponential time decay.
+Reads matches from the DuckDB store (`wc2026/db.py`; seeded from the
+martj42/international_results feed and the curated WC fixtures), filters to a
+recent competitive window, and attaches a per-match weight combining friendly
+down-weighting with exponential time decay.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import db
 from .config import PreprocessConfig
 
 # Schema per the kickoff:
@@ -22,7 +23,12 @@ RESULTS_COLUMNS = [
     "tournament", "city", "country", "neutral",
 ]
 
-DEFAULT_RESULTS_PATH = Path(__file__).resolve().parent.parent / "data" / "results.csv"
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DEFAULT_RESULTS_PATH = _DATA_DIR / "results.csv"
+# Curated WC-2026 fixtures/results, kept separate from the upstream historical
+# feed (results.csv) so the feed can be refreshed without clobbering tournament
+# data. Unioned in by load_results; played rows train, NA rows are fixtures.
+DEFAULT_WC_GAMES_PATH = _DATA_DIR / "wc-2026-games.csv"
 
 # Major finals = the World Cup plus the continental championships. These are
 # the highest-quality, full-strength-squad games and get the top weight.
@@ -45,10 +51,8 @@ def tournament_tier(name: str) -> str:
     return "other"
 
 
-def load_results(path: Path | str = DEFAULT_RESULTS_PATH) -> pd.DataFrame:
-    """Load raw results, typed. Rows with NA scores (future fixtures, incl.
-    unplayed WC-2026 matches) are kept here and dropped later by the
-    training filter, but are available as the fixture list."""
+def _read_results_csv(path: Path | str) -> pd.DataFrame:
+    """Read one results-schema CSV, typed."""
     df = pd.read_csv(
         path,
         dtype={"home_team": "string", "away_team": "string",
@@ -61,6 +65,19 @@ def load_results(path: Path | str = DEFAULT_RESULTS_PATH) -> pd.DataFrame:
     # (team names are current identity, country names historical).
     df["neutral"] = df["neutral"].astype("string").str.upper().eq("TRUE")
     return df
+
+
+def load_results(path: Path | str | None = None,
+                 wc_games_path: Path | str | None = None) -> pd.DataFrame:
+    """Load all matches (played + unplayed) from the DuckDB store, in the same
+    column shape the CSV loader used to return. The `path`/`wc_games_path`
+    arguments are retained for backwards compatibility and ignored (the data
+    now lives in the database; see scripts.migrate_to_duckdb)."""
+    con = db.connect(db.DB_PATH, read_only=True)
+    try:
+        return db.load_matches(con)
+    finally:
+        con.close()
 
 
 def _decay_weight(age_days: np.ndarray, half_life_days: float) -> np.ndarray:

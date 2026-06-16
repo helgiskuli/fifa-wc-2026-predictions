@@ -57,12 +57,30 @@ Source: [`martj42/international_results`](https://github.com/martj42/internation
 into `data/`. Schema:
 `date, home_team, away_team, home_score, away_score, tournament, city, country, neutral`.
 
-The loader reads `results.csv` **live on every run** and treats `NA`-score
-rows as the fixture list, so you can patch in new results mid-tournament by
-editing the CSV — no code change.
-
 > Scores are full-time **incl. extra time, excl. penalties**. A penalty
 > shootout shows as a draw; that's intended, don't "fix" it.
+
+### Data store
+
+The data lives in a single git-tracked DuckDB database, `data/wc2026.duckdb`,
+which is the source of truth (matches, predictions, goalscorers, shootouts).
+The CSVs above are **import sources**, not hand-edited records. Seed or rebuild
+the database from them with:
+
+```bash
+uv run python -m scripts.migrate_to_duckdb   # CSVs -> data/wc2026.duckdb
+```
+
+`load_results()` reads matches from the DB; `NA`-score rows are the fixture
+list. `run_schedule` writes each forecast as the `latest` prediction per match.
+On matchday, lock in the honestly-scored pre-game picks (immutable thereafter):
+
+```bash
+uv run python -m scripts.commit_picks 2026-06-16   # snapshot latest -> committed
+```
+
+The `v_model_report` view joins committed picks to actual results for "where was
+the model right?" analysis. `wc2026/db.py` owns all database access.
 
 ## Install & run
 
@@ -78,7 +96,8 @@ venue, pick, lam_h, lam_a, result, P_result, P_home_g, P_away_g, P_gd, EP`.
 
 ### Reforecasting mid-tournament
 
-1. Add the latest results to `data/results.csv` (overwrite `NA` scores).
+1. Fill in the latest results in `data/wc2026.duckdb` (via `db.upsert_results`,
+   or re-seed from refreshed CSVs with `scripts.migrate_to_duckdb`).
 2. `uv run python -m scripts.run_schedule`
 
 `as_of` defaults to **today**, so new results land inside the window and
@@ -122,10 +141,11 @@ are predicted automatically.
 ```
 wc2026/
   config.py    # all tunables (window, decay, tier weights, scoring a/b/c)
-  data.py      # load results.csv, window filter, recency × tier weights
+  data.py      # load matches from the DB, window filter, recency × tier weights
+  db.py        # all DuckDB access: schema, match_id, read/write, scoring view
   model.py     # bivariate-Poisson / Dixon-Coles fit, score matrix, save/load
   predict.py   # expected-points objective + scoreline pick, point scoring
-scripts/       # demo, run_schedule, backtest, diagnostics, sweeps
-data/          # martj42 results.csv (+ goalscorers, shootouts)
+scripts/       # demo, run_schedule, commit_picks, migrate_to_duckdb, backtest, ...
+data/          # wc2026.duckdb (source of truth) + seed CSVs
 predictions.csv
 ```
