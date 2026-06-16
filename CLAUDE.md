@@ -69,6 +69,30 @@ Re-running an experiment that's already been answered wastes a ~95s fit each.
 - After changing the model/weights/window, **re-run the relevant backtest**
   before trusting output — that's the project's validation habit.
 
+## Working with the slow fits (process notes)
+
+- A cold fit is ~95 s. **Always warm-start / `--cached`; never cold-fit in a
+  loop.** Backtest sweeps should parallelise across processes (see how
+  `sweep_halflife.py` is launched) rather than run serially.
+- When a fit runs in the background, **rely on the harness's
+  background-completion notification** to resume — do not spawn
+  `while pgrep …; do :; done` busy-wait loops (they peg a core, steal CPU
+  from the fit, and pile up redundant wait-tasks).
+
+## Tests
+
+`uv run python -m pytest -q` — fast (~0.4 s, no model fit). Covers the
+scoring rule, the EP objective, the score matrix, the param transforms, and
+model save/load. Run it after touching `predict.py` / `model.py`. If you
+change the warm-start transforms, the round-trip tests in `test_model.py`
+must stay green.
+
+## Reforecasting command
+
+`/reforecast` (`.claude/commands/reforecast.md`) wraps the tournament
+workflow: warm re-run of `run_schedule`, then `scripts/diff_predictions.py`
+to report only the picks that moved vs the committed sheet.
+
 ## Scoring objective (the thing being optimised)
 
 `a`=3 correct outcome, `b`=1 per correct team goal count, `c`=1 correct

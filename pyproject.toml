@@ -8,3 +8,8 @@ dependencies = [
     "pandas>=3.0.3",
     "scipy>=1.17.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+]

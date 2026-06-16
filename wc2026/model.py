@@ -30,6 +30,28 @@ from .config import ModelConfig, PreprocessConfig
 from .data import build_training_frame
 
 _EPS = 1e-10
+_LAMBDA3_MAX = 0.45  # cap on the bivariate-Poisson shared component
+
+
+# Constraining transforms for the two bounded globals, factored out so the
+# fit and the warm-start seeding stay in sync (and are unit-testable).
+def _raw_to_lambda3(raw):
+    """Unconstrained param -> lambda3 in (0, _LAMBDA3_MAX) via scaled sigmoid."""
+    return _LAMBDA3_MAX / (1.0 + np.exp(-raw))
+
+
+def _lambda3_to_raw(lambda3: float) -> float:
+    s = min(max(lambda3 / _LAMBDA3_MAX, 1e-6), 1.0 - 1e-6)
+    return float(np.log(s / (1.0 - s)))
+
+
+def _raw_to_rho(raw):
+    """Unconstrained param -> rho in (-1, 1) via tanh."""
+    return np.tanh(raw)
+
+
+def _rho_to_raw(rho: float) -> float:
+    return float(np.arctanh(min(max(rho, -0.999), 0.999)))
 
 
 @dataclass
@@ -231,10 +253,10 @@ def fit(df: pd.DataFrame, pre: PreprocessConfig, mcfg: ModelConfig,
         intercept = p[p_intercept]
         home_att = p[p_hatt]                     # home scoring boost
         home_def = p[p_hdef]                     # away scoring suppression
-        # lambda3 in [0, 0.45] via scaled sigmoid (keeps lam1,lam2 > 0 for
-        # realistic international scoring rates); rho in (-1, 1) via tanh.
-        lambda3 = 0.45 / (1.0 + np.exp(-p[p_l3]))
-        rho = np.tanh(p[p_rho])
+        # lambda3 in (0, _LAMBDA3_MAX) keeps lam1,lam2 > 0 for realistic
+        # scoring rates; rho in (-1, 1).
+        lambda3 = _raw_to_lambda3(p[p_l3])
+        rho = _raw_to_rho(p[p_rho])
         return att, dfn, intercept, home_att, home_def, lambda3, rho
 
     def neg_loglik(p):
@@ -267,9 +289,8 @@ def fit(df: pd.DataFrame, pre: PreprocessConfig, mcfg: ModelConfig,
         p0[p_intercept] = warm_start.intercept
         p0[p_hatt] = warm_start.home_att
         p0[p_hdef] = warm_start.home_def
-        s = min(max(warm_start.lambda3 / 0.45, 1e-6), 1 - 1e-6)
-        p0[p_l3] = np.log(s / (1.0 - s))               # inverse scaled-sigmoid
-        p0[p_rho] = np.arctanh(min(max(warm_start.rho, -0.999), 0.999))  # inverse tanh
+        p0[p_l3] = _lambda3_to_raw(warm_start.lambda3)
+        p0[p_rho] = _rho_to_raw(warm_start.rho)
 
     if verbose:
         start = "warm" if warm_start is not None else "cold"
