@@ -166,3 +166,17 @@ def commit_predictions(con, match_ids, force: bool = False, now=None) -> int:
     ).fetchall()
     con.unregister("_ids")
     return len(written)
+
+
+def upsert_results(con, rows) -> None:
+    """Fill scores for existing matches (the fetcher's write hook). `rows` is a
+    list of dicts or a DataFrame with match_id, home_score, away_score."""
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return
+    con.register("_res", df)
+    con.execute(
+        "UPDATE matches AS m SET home_score = r.home_score, "
+        "away_score = r.away_score FROM _res r WHERE m.match_id = r.match_id"
+    )
+    con.unregister("_res")

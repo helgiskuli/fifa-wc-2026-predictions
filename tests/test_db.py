@@ -140,3 +140,15 @@ def test_commit_force_overwrites(con):
         "WHERE match_id='m1' AND kind='committed'"
     ).fetchone()
     assert row == (0, 0)
+
+
+def test_upsert_results_fills_scores(con):
+    con.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, source) "
+        "VALUES ('m1', DATE '2026-06-16', 'France', 'Senegal', 'wc2026')"
+    )
+    db.upsert_results(con, [{"match_id": "m1", "home_score": 2, "away_score": 1}])
+    row = con.execute(
+        "SELECT home_score, away_score FROM matches WHERE match_id='m1'"
+    ).fetchone()
+    assert row == (2, 1)
