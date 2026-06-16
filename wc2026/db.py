@@ -96,3 +96,23 @@ def _create_report_view(con) -> None:
           ON p.match_id = m.match_id AND p.kind = 'committed'
         WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
     """)
+
+
+_MATCH_COLS = ["date", "home_team", "away_team", "home_score", "away_score",
+               "tournament", "city", "country", "neutral"]
+
+
+def load_matches(con) -> pd.DataFrame:
+    """All matches (played + unplayed), in the exact column shape that
+    data.load_results historically returned from the CSV."""
+    df = con.execute(
+        f"SELECT {', '.join(_MATCH_COLS)} FROM matches ORDER BY date"
+    ).df()
+    df["date"] = pd.to_datetime(df["date"])
+    # scores as float64 with NaN for unplayed, mirroring read_csv(na_values=["NA"])
+    df["home_score"] = df["home_score"].astype("float64")
+    df["away_score"] = df["away_score"].astype("float64")
+    df["neutral"] = df["neutral"].astype(bool)
+    for c in ["home_team", "away_team", "tournament", "city", "country"]:
+        df[c] = df[c].astype("string")
+    return df

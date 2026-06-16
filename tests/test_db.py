@@ -65,3 +65,22 @@ def test_report_view_points_match_score_prediction(con):
     got = {mid: pts for mid, pts in rows}
     for mid, ph, pa, ah, ay in cases:
         assert got[mid] == score_prediction(ph, pa, ah, ay, cfg)
+
+
+def test_load_matches_returns_loader_contract(con):
+    con.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, home_score, "
+        "away_score, tournament, neutral, city, country, source) VALUES "
+        "('m1', DATE '2022-06-01', 'Spain', 'Italy', 2, 1, 'Friendly', TRUE, 'X', 'Y', 'upstream'),"
+        "('m2', DATE '2026-06-16', 'France', 'Senegal', NULL, NULL, 'FIFA World Cup', TRUE, 'Z', 'W', 'wc2026')"
+    )
+    df = db.load_matches(con)
+    assert list(df.columns) == [
+        "date", "home_team", "away_team", "home_score", "away_score",
+        "tournament", "city", "country", "neutral",
+    ]
+    assert str(df["date"].dtype).startswith("datetime64")
+    assert df["neutral"].dtype == bool
+    # unplayed match has NaN score (mirrors the CSV na_values behaviour)
+    assert df.set_index("home_team").loc["France", "home_score"] != \
+        df.set_index("home_team").loc["France", "home_score"]  # NaN != NaN
