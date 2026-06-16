@@ -32,19 +32,22 @@ provides the schema and write hooks they will use, but does not implement them.
 | Prediction history | **Committed + latest** | `committed` = the locked pick snapshotted ~90 min before kickoff (immutable, the honestly-scored pre-game pick); `latest` = the live forecast each `/reforecast` overwrites. |
 | Predicted vs actual | **Separate tables joined on `match_id`** | Predictions are never overwritten by results, enabling "where was the model right?" analysis. |
 | `match_id` | **Deterministic slug** | Stable across DB rebuilds so the predictions↔matches join never breaks. |
+| Git tracking | **Track `data/wc2026.duckdb` binary** | DB is the one source of truth; no CSV export step. Binary diffs accepted; prediction history lives in-DB via `committed` rows + `forecast_ts`. |
 
 ## Storage & source-of-truth
 
-- `data/wc2026.duckdb` is the **runtime working store**, gitignored and
-  rebuildable at any time.
-- Git keeps tracking **CSV exports** as the durable, reviewable record. The
-  user stops hand-editing them; the migration, model, and (later) fetcher write
-  to the DB, and an export step regenerates the tracked CSVs.
-  - **Upstream seeds** (`results.csv`, `goalscorers.csv`, `shootouts.csv`):
-    external martj42 data, re-imported periodically.
-  - **Live state** (fetched WC results, predictions): exported back to CSV on
-    every write. `predictions.csv` becomes the committed+latest export; its
-    git history then doubles as an audit trail of how the model's picks moved.
+- `data/wc2026.duckdb` is the **single source of truth, tracked in git.** All
+  writes (migration, model predictions, later the fetcher) go to the DB; there
+  is no CSV export step.
+- **Upstream seed CSVs** (`results.csv`, `goalscorers.csv`, `shootouts.csv`)
+  remain in git as *import sources* only: they seed the DB initially and are
+  re-imported when the martj42 feed updates. They are inputs, not the record.
+- `wc-2026-games.csv` is a one-time seed for the WC fixtures; after migration
+  the DB is authoritative for WC data and it is no longer hand-edited.
+- Tradeoff (accepted): tracking the `.duckdb` binary means git diffs are not
+  human-readable, so the "picks evolution = `git log predictions.csv`" audit
+  trail is given up. Point-in-time prediction history instead lives *inside* the
+  DB via the `committed` rows and `forecast_ts`.
 
 ## Schema
 
@@ -102,8 +105,7 @@ right?" a single `SELECT`.
 
 **Stage / round / group labels**: `stage` and group matchday are derivable (all
 72 current WC rows are group stage; matchday from date buckets). `group_label`
-needs the group-draw mapping, included as a small static 12-group × 4-team
-constant in the migration, left `NULL` where unknown. Knockout fixtures get
+is left `NULL` for now and sourced later (by the fetcher). Knockout fixtures get
 `stage='knockout'` as they are added later.
 
 ## Code layout
@@ -121,7 +123,6 @@ constant in the migration, left `NULL` where unknown. Knockout fixtures get
   `committed`; refuses to overwrite an existing committed row unless `force`
   (the 90-min lock).
 - `upsert_results(con, rows)` — the hook the fetcher will use.
-- `export_tables(con)` — writes tables back to their CSVs after a mutation.
 
 **Change `wc2026/data.py`**: `load_results()` reads from the DB via
 `db.load_matches()` instead of the CSV, keeping its return contract identical.
@@ -129,14 +130,14 @@ constant in the migration, left `NULL` where unknown. Knockout fixtures get
 are untouched, the data source is swapped underneath them.
 
 **Change `scripts/run_schedule.py`**: after predicting, write picks as
-`kind='latest'` and export. A `--commit` flag (or small `scripts/commit_picks.py`)
-performs the `latest`→`committed` snapshot for matches kicking off soon.
+`kind='latest'`. A `--commit` flag (or small `scripts/commit_picks.py`) performs
+the `latest`→`committed` snapshot for matches kicking off soon.
 
 **New `scripts/migrate_to_duckdb.py`** (idempotent, re-runnable): seeds the DB
 from the existing CSVs (the same `results.csv` + `wc-2026-games.csv` union we
 already build, plus `goalscorers.csv` and `shootouts.csv`), assigns `match_id`,
-and sets `stage`/`round`/`group_label` for WC rows. The CSVs remain, so the
-migration is reversible.
+and sets `stage`/`round` for WC rows (`group_label` left `NULL`, sourced later).
+The seed CSVs remain, so the migration is re-runnable.
 
 ## Testing
 
@@ -155,8 +156,11 @@ unchanged.
 
 - **DuckDB single-writer concurrency**: fine for a single-user batch workflow;
   the fetcher and site run sequentially, not concurrently.
-- **Group-draw constant**: `group_label` depends on a hand-entered 12-group map;
-  acceptable since the draw is fixed and small. `NULL` where unknown.
+- **Binary `.duckdb` in git**: accepted; diffs are not human-readable. Data is
+  tiny so the file stays small; rely on the DB's `committed` rows + `forecast_ts`
+  for prediction history rather than CSV diffs.
+- **`group_label` deferred**: left `NULL` until the fetcher can source the group
+  draw; `stage` and `round` are populated now.
 - **`model_cache.json` is unaffected**: the fitted-model warm-start cache stays
   a JSON file; only match/prediction *data* moves into the DB.
 
