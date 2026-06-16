@@ -15,12 +15,29 @@ findings that are **not obvious from the code** and should not be redone.
 
 - `wc2026/config.py` — all tunables as frozen dataclasses (`PreprocessConfig`,
   `ModelConfig`, `ScoringConfig`). Change knobs here, not in code.
-- `wc2026/data.py` — load `results.csv`, window filter, per-match weight
-  (recency decay × competition-tier), tier classifier, fixture extraction.
+- `wc2026/data.py` — load matches from the DuckDB store (via `db.load_matches`),
+  window filter, per-match weight (recency decay × competition-tier), tier
+  classifier, fixture extraction.
+- `wc2026/db.py` — owns all DuckDB access: `connect`, `init_schema`,
+  deterministic `make_match_id`, `load_matches`, prediction upsert/commit
+  helpers, `upsert_results`, and the `v_model_report` scoring view.
 - `wc2026/model.py` — bivariate-Poisson / Dixon-Coles weighted-MLE `fit()`,
   `FittedModel` (rates, score matrix, `save`/`load`, warm-start).
 - `wc2026/predict.py` — expected-points objective, `best_prediction`, and
   `score_prediction` (used by backtests; mirrors the objective exactly).
+
+## Data store
+
+- Data lives in `data/wc2026.duckdb` (git-tracked binary, the single source of
+  truth), seeded by `scripts/migrate_to_duckdb.py` from the CSVs.
+- `results.csv` is the upstream historical seed; `wc-2026-games.csv` was the
+  one-time WC seed; `goalscorers.csv` / `shootouts.csv` are bonus seeds. All are
+  import sources, **not** hand-edited records.
+- `wc2026/db.py` owns all DB access; `load_results()` reads matches from the DB.
+- Predictions are stored as `committed` (locked ~90 min pre-kickoff via
+  `scripts.commit_picks`, immutable without `--force`) and `latest` (overwritten
+  each `run_schedule`). `v_model_report` joins committed picks to actual results
+  for model evaluation.
 
 ## Decided approach — do NOT re-litigate
 
