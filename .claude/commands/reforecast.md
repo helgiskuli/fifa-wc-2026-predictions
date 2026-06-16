@@ -1,11 +1,12 @@
 ---
-description: Refit the model on the latest results.csv and report which picks changed
+description: Refit the model on the latest results and report which picks changed
 argument-hint: (optional notes, e.g. "after round 2")
 allowed-tools: Bash(uv run python -m scripts.run_schedule), Bash(uv run python -m scripts.diff_predictions), Bash(git status:*), Bash(git diff:*)
 ---
 
-Reforecast the World Cup sheet with the latest results. Assume the user has
-already added new scores to `data/results.csv` (overwriting `NA` rows).
+Reforecast the World Cup sheet with the latest results. Assume the new scores
+are already in the DuckDB store (`data/wc2026.duckdb`, via `db.upsert_results`
+or a re-seed from refreshed CSVs).
 
 Do this:
 

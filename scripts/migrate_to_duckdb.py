@@ -45,6 +45,8 @@ def build_matches(results_csv: Path | str = DEFAULT_RESULTS_PATH,
 
 
 def _scorer_table(path: Path, cols: list[str]) -> pd.DataFrame:
+    # Rows are NOT deduped: goalscorers/shootouts are seed-only (no read
+    # consumers in the model path). Add dedup here if a feature joins them.
     raw = pd.read_csv(path, na_values=["NA"])
     raw["match_id"] = [
         db.make_match_id(d, h, a)

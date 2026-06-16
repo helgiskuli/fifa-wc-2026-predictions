@@ -1,9 +1,9 @@
 """Step 1: loader + preprocessing.
 
-Reads the martj42/international_results `results.csv` (live each call, so
-manual top-ups during the tournament flow straight through), filters to a
-recent competitive window, and attaches a per-match weight combining
-friendly down-weighting with exponential time decay.
+Reads matches from the DuckDB store (`wc2026/db.py`; seeded from the
+martj42/international_results feed and the curated WC fixtures), filters to a
+recent competitive window, and attaches a per-match weight combining friendly
+down-weighting with exponential time decay.
 """
 from __future__ import annotations
 

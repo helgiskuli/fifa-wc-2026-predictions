@@ -1,7 +1,11 @@
 import pandas as pd
 import pytest
 
-from wc2026 import db
+from scripts import commit_picks
+from scripts import migrate_to_duckdb as mig
+from scripts import run_schedule as rs
+from wc2026 import ScoringConfig, db, score_prediction
+from wc2026 import data as wcdata
 
 
 def test_make_match_id_is_deterministic_slug():
@@ -32,9 +36,6 @@ def test_init_schema_is_idempotent(con):
     db.init_schema(con)  # second call must not raise
     names = {r[0] for r in con.execute("SHOW TABLES").fetchall()}
     assert "matches" in names
-
-
-from wc2026 import ScoringConfig, score_prediction
 
 
 def _seed_match(con, mid, h, a, hs, as_):
@@ -179,9 +180,6 @@ def test_derive_group_matchday_counts_appearances():
     assert md.tolist() == [1, 1, 2, 2, 3, 3]
 
 
-from scripts import migrate_to_duckdb as mig
-
-
 def test_build_matches_labels_wc_rows(tmp_path):
     results = tmp_path / "results.csv"
     wc = tmp_path / "wc.csv"
@@ -205,9 +203,6 @@ def test_build_matches_labels_wc_rows(tmp_path):
     assert pd.isna(by_id.loc["20260611-france-senegal", "group_label"])
 
 
-from wc2026 import data as wcdata
-
-
 def test_load_results_reads_from_db(tmp_path, monkeypatch):
     dbfile = tmp_path / "t.duckdb"
     c = db.connect(dbfile)
@@ -224,9 +219,6 @@ def test_load_results_reads_from_db(tmp_path, monkeypatch):
     assert df.iloc[0]["home_team"] == "Spain"
 
 
-from scripts import run_schedule as rs
-
-
 def test_predictions_frame_shape():
     rows = [{
         "date": "2026-06-16", "home": "France", "away": "Senegal",
@@ -241,9 +233,6 @@ def test_predictions_frame_shape():
     assert df.loc[0, "outcome"] == "H"
     assert set(["lam_h", "lam_a", "p_result", "p_home_g", "p_away_g",
                 "p_gd", "ep"]).issubset(df.columns)
-
-
-from scripts import commit_picks
 
 
 def test_match_ids_for_date_filters_unplayed(con):

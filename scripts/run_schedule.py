@@ -87,6 +87,10 @@ def main(use_cached: bool = False) -> None:
             "EP": round(pred.exp_points, 3),
         })
 
+    if not rows:
+        print("no fixtures to predict (all matches played?)")
+        return
+
     out = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
     out.to_csv(OUT_PATH, index=False)
 
