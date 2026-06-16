@@ -84,3 +84,59 @@ def test_load_matches_returns_loader_contract(con):
     # unplayed match has NaN score (mirrors the CSV na_values behaviour)
     assert df.set_index("home_team").loc["France", "home_score"] != \
         df.set_index("home_team").loc["France", "home_score"]  # NaN != NaN
+
+
+def _pred_df(mid, ph, pa, outcome="H"):
+    return pd.DataFrame([{
+        "match_id": mid, "pred_home_goals": ph, "pred_away_goals": pa,
+        "outcome": outcome, "lam_h": 1.5, "lam_a": 0.8, "p_result": 0.5,
+        "p_home_g": 0.3, "p_away_g": 0.4, "p_gd": 0.2, "ep": 2.5,
+    }])
+
+
+def test_upsert_latest_overwrites_in_place(con):
+    db.upsert_latest_predictions(con, _pred_df("m1", 1, 0), "2026-06-10")
+    db.upsert_latest_predictions(con, _pred_df("m1", 2, 1), "2026-06-15")
+    rows = con.execute(
+        "SELECT pred_home_goals, pred_away_goals FROM predictions "
+        "WHERE match_id='m1' AND kind='latest'"
+    ).fetchall()
+    assert rows == [(2, 1)]  # single latest row, overwritten
+
+
+def test_commit_snapshots_latest(con):
+    db.upsert_latest_predictions(con, _pred_df("m1", 2, 1), "2026-06-15")
+    n = db.commit_predictions(con, ["m1"], now="2026-06-16 12:00:00")
+    assert n == 1
+    row = con.execute(
+        "SELECT pred_home_goals, pred_away_goals FROM predictions "
+        "WHERE match_id='m1' AND kind='committed'"
+    ).fetchone()
+    assert row == (2, 1)
+
+
+def test_commit_is_immutable_without_force(con):
+    db.upsert_latest_predictions(con, _pred_df("m1", 2, 1), "2026-06-15")
+    db.commit_predictions(con, ["m1"], now="2026-06-16 12:00:00")
+    # a later re-forecast changes latest, then a second commit attempt
+    db.upsert_latest_predictions(con, _pred_df("m1", 0, 0), "2026-06-16")
+    n = db.commit_predictions(con, ["m1"], now="2026-06-16 13:00:00")
+    assert n == 0  # refused
+    row = con.execute(
+        "SELECT pred_home_goals, pred_away_goals FROM predictions "
+        "WHERE match_id='m1' AND kind='committed'"
+    ).fetchone()
+    assert row == (2, 1)  # original committed pick preserved
+
+
+def test_commit_force_overwrites(con):
+    db.upsert_latest_predictions(con, _pred_df("m1", 2, 1), "2026-06-15")
+    db.commit_predictions(con, ["m1"], now="2026-06-16 12:00:00")
+    db.upsert_latest_predictions(con, _pred_df("m1", 0, 0), "2026-06-16")
+    n = db.commit_predictions(con, ["m1"], force=True, now="2026-06-16 13:00:00")
+    assert n == 1
+    row = con.execute(
+        "SELECT pred_home_goals, pred_away_goals FROM predictions "
+        "WHERE match_id='m1' AND kind='committed'"
+    ).fetchone()
+    assert row == (0, 0)

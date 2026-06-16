@@ -116,3 +116,53 @@ def load_matches(con) -> pd.DataFrame:
     for c in ["home_team", "away_team", "tournament", "city", "country"]:
         df[c] = df[c].astype("string")
     return df
+
+
+_PRED_COLS = ["match_id", "kind", "pred_home_goals", "pred_away_goals",
+              "outcome", "lam_h", "lam_a", "p_result", "p_home_g",
+              "p_away_g", "p_gd", "ep", "model_as_of", "forecast_ts"]
+
+
+def upsert_latest_predictions(con, df: pd.DataFrame, model_as_of, now=None) -> None:
+    """Write/replace the single kind='latest' row per match."""
+    rows = df.copy()
+    rows["kind"] = "latest"
+    rows["model_as_of"] = pd.Timestamp(model_as_of)
+    rows["forecast_ts"] = pd.Timestamp(now) if now is not None else pd.Timestamp.utcnow()
+    rows = rows[_PRED_COLS]
+    con.register("_preds", rows)
+    con.execute(
+        f"INSERT OR REPLACE INTO predictions ({', '.join(_PRED_COLS)}) "
+        f"SELECT {', '.join(_PRED_COLS)} FROM _preds"
+    )
+    con.unregister("_preds")
+
+
+def commit_predictions(con, match_ids, force: bool = False, now=None) -> int:
+    """Snapshot current 'latest' rows to 'committed' for the given matches.
+    Refuses to overwrite an existing committed row unless force=True.
+    Returns the number of committed rows written."""
+    ids = list(dict.fromkeys(match_ids))
+    if not ids:
+        return 0
+    ts = pd.Timestamp(now) if now is not None else pd.Timestamp.utcnow()
+    con.register("_ids", pd.DataFrame({"match_id": ids}))
+    guard = "" if force else (
+        "AND p.match_id NOT IN (SELECT match_id FROM predictions WHERE kind='committed')"
+    )
+    written = con.execute(
+        f"""INSERT OR REPLACE INTO predictions
+            (match_id, kind, pred_home_goals, pred_away_goals, outcome,
+             lam_h, lam_a, p_result, p_home_g, p_away_g, p_gd, ep,
+             model_as_of, forecast_ts)
+            SELECT p.match_id, 'committed', p.pred_home_goals, p.pred_away_goals,
+             p.outcome, p.lam_h, p.lam_a, p.p_result, p.p_home_g, p.p_away_g,
+             p.p_gd, p.ep, p.model_as_of, ?
+            FROM predictions p
+            WHERE p.kind='latest'
+              AND p.match_id IN (SELECT match_id FROM _ids) {guard}
+            RETURNING 1""",
+        [ts],
+    ).fetchall()
+    con.unregister("_ids")
+    return len(written)
