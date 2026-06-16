@@ -180,3 +180,27 @@ def upsert_results(con, rows) -> None:
         "away_score = r.away_score FROM _res r WHERE m.match_id = r.match_id"
     )
     con.unregister("_res")
+
+
+def assign_match_ids(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["match_id"] = [
+        make_match_id(d, h, a)
+        for d, h, a in zip(df["date"], df["home_team"], df["away_team"])
+    ]
+    return df
+
+
+def derive_group_matchday(group_df: pd.DataFrame) -> pd.Series:
+    """Matchday (1..3) per group game, via each team's Nth appearance in date
+    order. Both teams in a round-robin game share the same appearance count.
+    Returns a Series aligned to group_df's index."""
+    ordered = group_df.sort_values("date")
+    counts: dict[str, int] = {}
+    md: dict = {}
+    for idx, r in ordered.iterrows():
+        n = max(counts.get(r["home_team"], 0), counts.get(r["away_team"], 0)) + 1
+        counts[r["home_team"]] = n
+        counts[r["away_team"]] = n
+        md[idx] = n
+    return pd.Series(md).reindex(group_df.index)

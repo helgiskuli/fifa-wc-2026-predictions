@@ -152,3 +152,28 @@ def test_upsert_results_fills_scores(con):
         "SELECT home_score, away_score FROM matches WHERE match_id='m1'"
     ).fetchone()
     assert row == (2, 1)
+
+
+def test_assign_match_ids():
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-06-16", "2026-06-16"]),
+        "home_team": ["France", "Iraq"], "away_team": ["Senegal", "Norway"],
+    })
+    out = db.assign_match_ids(df)
+    assert out["match_id"].tolist() == [
+        "20260616-france-senegal", "20260616-iraq-norway"]
+
+
+def test_derive_group_matchday_counts_appearances():
+    # 2 groups (ABCD, EFGH style) over 3 rounds; matchday = each team's Nth game
+    rounds = [
+        ("2026-06-11", "A", "B"), ("2026-06-11", "C", "D"),
+        ("2026-06-15", "A", "C"), ("2026-06-15", "B", "D"),
+        ("2026-06-19", "A", "D"), ("2026-06-19", "B", "C"),
+    ]
+    df = pd.DataFrame(
+        [{"date": pd.Timestamp(d), "home_team": h, "away_team": a}
+         for d, h, a in rounds]
+    )
+    md = db.derive_group_matchday(df)
+    assert md.tolist() == [1, 1, 2, 2, 3, 3]
