@@ -22,7 +22,12 @@ RESULTS_COLUMNS = [
     "tournament", "city", "country", "neutral",
 ]
 
-DEFAULT_RESULTS_PATH = Path(__file__).resolve().parent.parent / "data" / "results.csv"
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DEFAULT_RESULTS_PATH = _DATA_DIR / "results.csv"
+# Curated WC-2026 fixtures/results, kept separate from the upstream historical
+# feed (results.csv) so the feed can be refreshed without clobbering tournament
+# data. Unioned in by load_results; played rows train, NA rows are fixtures.
+DEFAULT_WC_GAMES_PATH = _DATA_DIR / "wc-2026-games.csv"
 
 # Major finals = the World Cup plus the continental championships. These are
 # the highest-quality, full-strength-squad games and get the top weight.
@@ -45,10 +50,8 @@ def tournament_tier(name: str) -> str:
     return "other"
 
 
-def load_results(path: Path | str = DEFAULT_RESULTS_PATH) -> pd.DataFrame:
-    """Load raw results, typed. Rows with NA scores (future fixtures, incl.
-    unplayed WC-2026 matches) are kept here and dropped later by the
-    training filter, but are available as the fixture list."""
+def _read_results_csv(path: Path | str) -> pd.DataFrame:
+    """Read one results-schema CSV, typed."""
     df = pd.read_csv(
         path,
         dtype={"home_team": "string", "away_team": "string",
@@ -60,6 +63,31 @@ def load_results(path: Path | str = DEFAULT_RESULTS_PATH) -> pd.DataFrame:
     # neutral -> bool. Use the flag for venue, NOT a team/country string match
     # (team names are current identity, country names historical).
     df["neutral"] = df["neutral"].astype("string").str.upper().eq("TRUE")
+    return df
+
+
+def load_results(path: Path | str = DEFAULT_RESULTS_PATH,
+                 wc_games_path: Path | str | None = DEFAULT_WC_GAMES_PATH
+                 ) -> pd.DataFrame:
+    """Load the historical feed unioned with the curated WC-2026 games file.
+
+    `results.csv` is the upstream historical feed (played matches only);
+    `wc-2026-games.csv` is the hand-maintained tournament file. Played rows
+    from either source train (via build_training_frame); the WC file's NA-score
+    rows are the fixture list (via upcoming_fixtures). Keeping them in separate
+    files lets the feed be refreshed without clobbering tournament data.
+
+    A WC game flips from "fixture to predict" to "training datapoint" simply by
+    its score being filled in -- in one place, the WC file."""
+    df = _read_results_csv(path)
+    if wc_games_path is not None and Path(wc_games_path).exists():
+        wc = _read_results_csv(wc_games_path)
+        df = pd.concat([df, wc], ignore_index=True)
+        # Safety net: if a WC row lingers in the historical feed, let the
+        # curated file win rather than double-count it in training.
+        df = df.drop_duplicates(
+            subset=["date", "home_team", "away_team"], keep="last"
+        ).reset_index(drop=True)
     return df
 
 
