@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import db
 from .config import PreprocessConfig
 
 # Schema per the kickoff:
@@ -66,29 +67,17 @@ def _read_results_csv(path: Path | str) -> pd.DataFrame:
     return df
 
 
-def load_results(path: Path | str = DEFAULT_RESULTS_PATH,
-                 wc_games_path: Path | str | None = DEFAULT_WC_GAMES_PATH
-                 ) -> pd.DataFrame:
-    """Load the historical feed unioned with the curated WC-2026 games file.
-
-    `results.csv` is the upstream historical feed (played matches only);
-    `wc-2026-games.csv` is the hand-maintained tournament file. Played rows
-    from either source train (via build_training_frame); the WC file's NA-score
-    rows are the fixture list (via upcoming_fixtures). Keeping them in separate
-    files lets the feed be refreshed without clobbering tournament data.
-
-    A WC game flips from "fixture to predict" to "training datapoint" simply by
-    its score being filled in -- in one place, the WC file."""
-    df = _read_results_csv(path)
-    if wc_games_path is not None and Path(wc_games_path).exists():
-        wc = _read_results_csv(wc_games_path)
-        df = pd.concat([df, wc], ignore_index=True)
-        # Safety net: if a WC row lingers in the historical feed, let the
-        # curated file win rather than double-count it in training.
-        df = df.drop_duplicates(
-            subset=["date", "home_team", "away_team"], keep="last"
-        ).reset_index(drop=True)
-    return df
+def load_results(path: Path | str | None = None,
+                 wc_games_path: Path | str | None = None) -> pd.DataFrame:
+    """Load all matches (played + unplayed) from the DuckDB store, in the same
+    column shape the CSV loader used to return. The `path`/`wc_games_path`
+    arguments are retained for backwards compatibility and ignored (the data
+    now lives in the database; see scripts.migrate_to_duckdb)."""
+    con = db.connect(db.DB_PATH, read_only=True)
+    try:
+        return db.load_matches(con)
+    finally:
+        con.close()
 
 
 def _decay_weight(age_days: np.ndarray, half_life_days: float) -> np.ndarray:

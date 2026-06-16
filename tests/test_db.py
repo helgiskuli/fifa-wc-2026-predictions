@@ -203,3 +203,22 @@ def test_build_matches_labels_wc_rows(tmp_path):
     assert by_id.loc["20260611-france-senegal", "round"] == "MD1"
     assert by_id.loc["20260615-france-iraq", "round"] == "MD2"
     assert pd.isna(by_id.loc["20260611-france-senegal", "group_label"])
+
+
+from wc2026 import data as wcdata
+
+
+def test_load_results_reads_from_db(tmp_path, monkeypatch):
+    dbfile = tmp_path / "t.duckdb"
+    c = db.connect(dbfile)
+    db.init_schema(c)
+    c.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, home_score, "
+        "away_score, tournament, neutral, city, country, source) VALUES "
+        "('m1', DATE '2022-06-01', 'Spain', 'Italy', 2, 1, 'Friendly', TRUE, 'X', 'Y', 'upstream')"
+    )
+    c.close()
+    monkeypatch.setattr(db, "DB_PATH", dbfile)  # load_results reads db.DB_PATH at call time
+    df = wcdata.load_results()
+    assert {"home_team", "away_team", "home_score", "neutral"} <= set(df.columns)
+    assert df.iloc[0]["home_team"] == "Spain"
