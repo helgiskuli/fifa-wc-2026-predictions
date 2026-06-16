@@ -15,7 +15,7 @@ def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
 
 
-def make_match_id(match_date, home: str, away: str) -> str:
+def make_match_id(match_date: str | pd.Timestamp, home: str, away: str) -> str:
     """Deterministic, rebuild-stable id: YYYYMMDD-home-away (slugified).
 
     NOT an autoincrement: a DB rebuild must reproduce the same ids or the
@@ -24,7 +24,10 @@ def make_match_id(match_date, home: str, away: str) -> str:
     return f"{d}-{_slug(home)}-{_slug(away)}"
 
 
-def connect(path=DB_PATH, read_only: bool = False):
+def connect(
+    path: Path | str = DB_PATH, read_only: bool = False
+) -> duckdb.DuckDBPyConnection:
+    """Open a DuckDB connection to the data store (or `:memory:` for tests)."""
     return duckdb.connect(str(path), read_only=read_only)
 
 
@@ -62,13 +65,14 @@ _TABLES = [
 ]
 
 
-def init_schema(con) -> None:
+def init_schema(con: duckdb.DuckDBPyConnection) -> None:
+    """Idempotently create the four tables and the v_model_report view."""
     for stmt in _TABLES:
         con.execute(stmt)
     _create_report_view(con)
 
 
-def _create_report_view(con) -> None:
+def _create_report_view(con: duckdb.DuckDBPyConnection) -> None:
     # Office-pool scoring: a=3 correct outcome, b=1 per correct team goal
     # count, c=1 correct signed goal difference. Mirrors predict.score_prediction.
     con.execute("""
@@ -102,7 +106,7 @@ _MATCH_COLS = ["date", "home_team", "away_team", "home_score", "away_score",
                "tournament", "city", "country", "neutral"]
 
 
-def load_matches(con) -> pd.DataFrame:
+def load_matches(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """All matches (played + unplayed), in the exact column shape that
     data.load_results historically returned from the CSV."""
     df = con.execute(
@@ -123,12 +127,17 @@ _PRED_COLS = ["match_id", "kind", "pred_home_goals", "pred_away_goals",
               "p_away_g", "p_gd", "ep", "model_as_of", "forecast_ts"]
 
 
-def upsert_latest_predictions(con, df: pd.DataFrame, model_as_of, now=None) -> None:
+def upsert_latest_predictions(
+    con: duckdb.DuckDBPyConnection,
+    df: pd.DataFrame,
+    model_as_of: str | pd.Timestamp,
+    now: str | pd.Timestamp | None = None,
+) -> None:
     """Write/replace the single kind='latest' row per match."""
     rows = df.copy()
     rows["kind"] = "latest"
     rows["model_as_of"] = pd.Timestamp(model_as_of)
-    rows["forecast_ts"] = pd.Timestamp(now) if now is not None else pd.Timestamp.utcnow()
+    rows["forecast_ts"] = pd.Timestamp(now) if now is not None else pd.Timestamp.now("UTC")
     rows = rows[_PRED_COLS]
     con.register("_preds", rows)
     con.execute(
@@ -138,14 +147,19 @@ def upsert_latest_predictions(con, df: pd.DataFrame, model_as_of, now=None) -> N
     con.unregister("_preds")
 
 
-def commit_predictions(con, match_ids, force: bool = False, now=None) -> int:
+def commit_predictions(
+    con: duckdb.DuckDBPyConnection,
+    match_ids,
+    force: bool = False,
+    now: str | pd.Timestamp | None = None,
+) -> int:
     """Snapshot current 'latest' rows to 'committed' for the given matches.
     Refuses to overwrite an existing committed row unless force=True.
     Returns the number of committed rows written."""
     ids = list(dict.fromkeys(match_ids))
     if not ids:
         return 0
-    ts = pd.Timestamp(now) if now is not None else pd.Timestamp.utcnow()
+    ts = pd.Timestamp(now) if now is not None else pd.Timestamp.now("UTC")
     con.register("_ids", pd.DataFrame({"match_id": ids}))
     guard = "" if force else (
         "AND p.match_id NOT IN (SELECT match_id FROM predictions WHERE kind='committed')"
@@ -168,7 +182,7 @@ def commit_predictions(con, match_ids, force: bool = False, now=None) -> int:
     return len(written)
 
 
-def upsert_results(con, rows) -> None:
+def upsert_results(con: duckdb.DuckDBPyConnection, rows) -> None:
     """Fill scores for existing matches (the fetcher's write hook). `rows` is a
     list of dicts or a DataFrame with match_id, home_score, away_score."""
     df = pd.DataFrame(rows)
@@ -183,6 +197,7 @@ def upsert_results(con, rows) -> None:
 
 
 def assign_match_ids(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy of `df` with a deterministic `match_id` column added."""
     df = df.copy()
     df["match_id"] = [
         make_match_id(d, h, a)
