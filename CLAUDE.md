@@ -34,6 +34,10 @@ findings that are **not obvious from the code** and should not be redone.
   one-time WC seed; `goalscorers.csv` / `shootouts.csv` are bonus seeds. All are
   import sources, **not** hand-edited records.
 - `wc2026/db.py` owns all DB access; `load_results()` reads matches from the DB.
+- `match_id` is `YYYYMMDD-home-away` (slug). Known limitation: it cannot
+  represent two genuinely distinct same-day same-teams matches; the migration
+  collapses the lone corpus case (1974 Tahiti vs New Caledonia) into one row.
+  Accepted (zero-weight friendly).
 - Predictions are stored as `committed` (locked ~90 min pre-kickoff via
   `scripts.commit_picks`, immutable without `--force`) and `latest` (overwritten
   each `run_schedule`). `v_model_report` joins committed picks to actual results

@@ -18,11 +18,9 @@ from __future__ import annotations
 import sys
 from datetime import date, timedelta
 
-import numpy as np
 import pandas as pd
 
-from wc2026 import (ModelConfig, PreprocessConfig, ScoringConfig,
-                    fit, load_results)
+from wc2026 import (ModelConfig, PreprocessConfig, fit, load_results)
 from wc2026.predict import _outcome_probs
 
 WC = {2018: (date(2018, 6, 14), date(2018, 7, 15)),

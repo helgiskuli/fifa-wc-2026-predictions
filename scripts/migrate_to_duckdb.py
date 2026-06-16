@@ -28,6 +28,12 @@ def build_matches(results_csv: Path | str = DEFAULT_RESULTS_PATH,
     wc = _read_results_csv(wc_csv)
     wc["source"] = "wc2026"
     df = pd.concat([hist, wc], ignore_index=True)
+    # Dedup on the natural key, letting the curated WC rows win over the feed.
+    # Known limitation: this also collapses the one historical case of two
+    # genuinely distinct same-day same-teams matches in the corpus
+    # (1974-02-17 Tahiti vs New Caledonia, 2-1 and 1-2) into a single row, since
+    # the deterministic match_id cannot represent both. Immaterial to the model
+    # (a 1974 friendly at ~zero decay weight); accepted, see the data-store spec.
     df = df.drop_duplicates(
         subset=["date", "home_team", "away_team"], keep="last"
     ).reset_index(drop=True)

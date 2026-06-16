@@ -133,7 +133,7 @@ def main(pool_size: int = 20, n_sims: int = 20000,
         })
 
     F = len(fixtures)
-    O = pool_size - 1
+    n_opp = pool_size - 1
 
     # --- sample one tournament outcome per trial, per fixture -------------
     truth_h = np.empty((F, n_sims), dtype=int)
@@ -144,13 +144,13 @@ def main(pool_size: int = 20, n_sims: int = 20000,
         cell = rng.choice(n * n, size=n_sims, p=Pt.ravel())
         truth_h[k], truth_a[k] = np.divmod(cell, n)
 
-    # --- opponents: (n_sims, O) picks per fixture, scored vs truth --------
-    opp_tot = np.zeros((n_sims, O), dtype=float)
+    # --- opponents: (n_sims, n_opp) picks per fixture, scored vs truth --------
+    opp_tot = np.zeros((n_sims, n_opp), dtype=float)
     for k, fxd in enumerate(fixtures):
         P = fxd["P"]
         n = P.shape[0]
         fav_home = fxd["fav_home"]
-        m = n_sims * O
+        m = n_sims * n_opp
         if field == "casual":
             u = rng.random(m)
             oh = np.empty(m, dtype=int)
@@ -177,8 +177,8 @@ def main(pool_size: int = 20, n_sims: int = 20000,
             oh[pert & side] = np.maximum(0, oh[pert & side] + delta[pert & side])
             oa[pert & ~side] = np.maximum(0, oa[pert & ~side] + delta[pert & ~side])
 
-        oh = oh.reshape(n_sims, O)
-        oa = oa.reshape(n_sims, O)
+        oh = oh.reshape(n_sims, n_opp)
+        oa = oa.reshape(n_sims, n_opp)
         th = truth_h[k][:, None]
         ta = truth_a[k][:, None]
         psign = np.sign(oh - oa)
@@ -216,7 +216,7 @@ def main(pool_size: int = 20, n_sims: int = 20000,
         return strict, float(np.mean(share))
 
     print(f"\n=== winner-take-all pool sim: {pool_size} entrants "
-          f"({O} {field} opponents), {F} fixtures, {n_sims} trials ===")
+          f"({n_opp} {field} opponents), {F} fixtures, {n_sims} trials ===")
     print(f"DGP={dgp} (truth source), field={field}")
     print(f"deviation pool: {len(draw_cands)} draw-likely + {len(und_cands)} "
           f"mid-confidence underdog games available\n")
