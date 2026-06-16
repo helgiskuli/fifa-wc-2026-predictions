@@ -177,3 +177,29 @@ def test_derive_group_matchday_counts_appearances():
     )
     md = db.derive_group_matchday(df)
     assert md.tolist() == [1, 1, 2, 2, 3, 3]
+
+
+from scripts import migrate_to_duckdb as mig
+
+
+def test_build_matches_labels_wc_rows(tmp_path):
+    results = tmp_path / "results.csv"
+    wc = tmp_path / "wc.csv"
+    hdr = "date,home_team,away_team,home_score,away_score,tournament,city,country,neutral\n"
+    results.write_text(
+        hdr + "2024-01-01,Spain,Italy,2,1,Friendly,X,Y,FALSE\n"
+    )
+    wc.write_text(
+        hdr
+        + "2026-06-11,France,Senegal,1,0,FIFA World Cup,A,US,TRUE\n"
+        + "2026-06-15,France,Iraq,NA,NA,FIFA World Cup,B,US,TRUE\n"
+    )
+    df = mig.build_matches(results, wc)
+    by_id = df.set_index("match_id")
+    assert by_id.loc["20240101-spain-italy", "source"] == "upstream"
+    assert by_id.loc["20240101-spain-italy", "stage"] is None or \
+        pd.isna(by_id.loc["20240101-spain-italy", "stage"])
+    assert by_id.loc["20260611-france-senegal", "stage"] == "group"
+    assert by_id.loc["20260611-france-senegal", "round"] == "MD1"
+    assert by_id.loc["20260615-france-iraq", "round"] == "MD2"
+    assert pd.isna(by_id.loc["20260611-france-senegal", "group_label"])
