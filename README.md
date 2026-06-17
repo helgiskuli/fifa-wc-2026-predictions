@@ -82,6 +82,18 @@ uv run python -m scripts.commit_picks 2026-06-16   # snapshot latest -> committe
 The `v_model_report` view joins committed picks to actual results for "where was
 the model right?" analysis. `wc2026/db.py` owns all database access.
 
+Pull match results into the DB instead of editing data by hand:
+
+```bash
+uv run python -m scripts.fetch_results            # pull this WC's results (martj42)
+uv run python -m scripts.fetch_results --dry-run  # preview changes, write nothing
+uv run python -m scripts.fetch_results --corpus-refresh   # whole historical feed
+```
+
+The fetcher writes only finished matches and reports any score changes. The
+source is pluggable (`wc2026/providers.py`); a live-API provider for real-time
+scores is scaffolded but not yet implemented.
+
 ## Install & run
 
 Uses [`uv`](https://docs.astral.sh/uv/):

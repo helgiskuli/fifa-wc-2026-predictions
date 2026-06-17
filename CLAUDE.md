@@ -43,6 +43,20 @@ findings that are **not obvious from the code** and should not be redone.
   each `run_schedule`). `v_model_report` joins committed picks to actual results
   for model evaluation.
 
+## Auto-fetcher
+
+- `wc2026/providers.py` is the only network-touching module: a `ResultsProvider`
+  protocol + normalized `MatchRecord`; `Martj42CsvProvider` (concrete, the
+  GitHub CSV feed) and `LiveApiProvider` (stub; reads `WC_RESULTS_API_KEY`,
+  concrete API TBD).
+- `wc2026/fetch.py` `reconcile()` holds the write policy (final-only,
+  overwrite-if-changed, change report); `db` stays policy-free.
+  `db.upsert_matches` inserts new matches and updates **only** scores on
+  conflict (preserving seeded WC labels/source).
+- `scripts/fetch_results.py`: manual command. Default pulls this WC's results
+  via martj42; `--corpus-refresh` does the full historical feed; `--dry-run`
+  reports without writing (opens the DB read-only).
+
 ## Decided approach — do NOT re-litigate
 
 From the project kickoff (`wc-2026-predictor-kickoff.md`):

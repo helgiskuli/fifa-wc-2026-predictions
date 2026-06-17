@@ -1,6 +1,7 @@
 import pytest
 
-from wc2026 import providers
+from scripts import fetch_results
+from wc2026 import db, fetch, providers
 from wc2026.providers import MatchRecord
 
 
@@ -41,11 +42,6 @@ def test_martj42_provider_parses_csv():
     assert fr.source == "upstream"
     assert fr.tournament == "FIFA World Cup"
     assert fr.stage is None and fr.group_label is None
-
-
-# NOTE: `providers` and `MatchRecord` are already imported at the top of this
-# file. Import only the new modules here to avoid a redefinition lint.
-from wc2026 import db, fetch
 
 
 @pytest.fixture
@@ -108,9 +104,6 @@ def test_reconcile_dry_run_writes_nothing(con):
                           write=False)
     assert "20260612-brazil-haiti" in rep.inserted
     assert con.execute("SELECT count(*) FROM matches").fetchone()[0] == 0
-
-
-from scripts import fetch_results
 
 
 def test_select_records_default_is_wc_2026_only():
