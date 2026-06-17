@@ -243,3 +243,47 @@ def test_match_ids_for_date_filters_unplayed(con):
     )
     ids = commit_picks.match_ids_for_date(con, "2026-06-16")
     assert ids == ["20260616-france-senegal"]
+
+
+def test_upsert_matches_inserts_new_and_updates_score_only(con):
+    # seed an existing WC fixture with labels and NULL score
+    con.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, tournament, "
+        "neutral, stage, round, group_label, source) VALUES "
+        "('20260611-france-senegal', DATE '2026-06-11', 'France', 'Senegal', "
+        "'FIFA World Cup', TRUE, 'group', 'MD1', 'A', 'wc2026')"
+    )
+    rows = [
+        # existing match: fill score; carries no labels + source 'upstream'
+        {"match_id": "20260611-france-senegal", "date": "2026-06-11",
+         "home_team": "France", "away_team": "Senegal", "home_score": 1,
+         "away_score": 0, "tournament": "FIFA World Cup", "neutral": True,
+         "city": None, "country": None, "stage": None, "round": None,
+         "group_label": None, "source": "upstream"},
+        # brand-new match: full insert
+        {"match_id": "20260612-brazil-haiti", "date": "2026-06-12",
+         "home_team": "Brazil", "away_team": "Haiti", "home_score": 3,
+         "away_score": 0, "tournament": "FIFA World Cup", "neutral": True,
+         "city": "Miami", "country": "United States", "stage": None,
+         "round": None, "group_label": None, "source": "upstream"},
+    ]
+    db.upsert_matches(con, rows)
+
+    # existing row: score filled, but labels + source PRESERVED
+    got = con.execute(
+        "SELECT home_score, away_score, stage, round, group_label, source "
+        "FROM matches WHERE match_id='20260611-france-senegal'"
+    ).fetchone()
+    assert got == (1, 0, "group", "MD1", "A", "wc2026")
+
+    # new row: inserted with its own source
+    new = con.execute(
+        "SELECT home_score, away_score, source FROM matches "
+        "WHERE match_id='20260612-brazil-haiti'"
+    ).fetchone()
+    assert new == (3, 0, "upstream")
+
+
+def test_upsert_matches_empty_is_noop(con):
+    db.upsert_matches(con, [])
+    assert con.execute("SELECT count(*) FROM matches").fetchone()[0] == 0

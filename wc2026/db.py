@@ -182,6 +182,34 @@ def commit_predictions(
     return len(written)
 
 
+_MATCH_UPSERT_COLS = ["match_id", "date", "home_team", "away_team",
+                      "home_score", "away_score", "tournament", "neutral",
+                      "city", "country", "stage", "round", "group_label",
+                      "source"]
+
+
+def upsert_matches(con: duckdb.DuckDBPyConnection, rows) -> None:
+    """Insert new matches (full metadata) and, on match_id conflict, update ONLY
+    the scores. Existing labels/source/venue are preserved (martj42 backfill
+    rows carry no WC labels). `rows` is a list of dicts or a DataFrame with the
+    match columns; missing columns are filled with NULL."""
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return
+    for c in _MATCH_UPSERT_COLS:
+        if c not in df.columns:
+            df[c] = None
+    df = df[_MATCH_UPSERT_COLS]
+    con.register("_um", df)
+    con.execute(
+        f"INSERT INTO matches ({', '.join(_MATCH_UPSERT_COLS)}) "
+        f"SELECT {', '.join(_MATCH_UPSERT_COLS)} FROM _um "
+        "ON CONFLICT (match_id) DO UPDATE SET "
+        "home_score = excluded.home_score, away_score = excluded.away_score"
+    )
+    con.unregister("_um")
+
+
 def upsert_results(con: duckdb.DuckDBPyConnection, rows) -> None:
     """Fill scores for existing matches (the fetcher's write hook). `rows` is a
     list of dicts or a DataFrame with match_id, home_score, away_score."""
