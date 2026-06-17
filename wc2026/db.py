@@ -160,6 +160,8 @@ def upsert_predictions(
     now: str | pd.Timestamp | None = None,
 ) -> None:
     """Write/replace the single row of `kind` per match (PK is match_id+kind)."""
+    if not kind:
+        raise ValueError("kind must be a non-empty string")
     rows = df.copy()
     rows["kind"] = kind
     rows["model_as_of"] = pd.Timestamp(model_as_of)

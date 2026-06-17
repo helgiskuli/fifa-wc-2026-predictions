@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
+from datetime import datetime
+
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from wc2026 import db
@@ -62,6 +63,7 @@ def upcoming_rows(con) -> list[dict]:
     """).df().to_dict("records")
     for r in rows:
         r["conf_pct"] = int(round(100 * (r["p_result"] or 0)))
+        del r["p_result"]
     return rows
 
 
@@ -84,7 +86,7 @@ def main() -> None:
     finally:
         con.close()
 
-    built_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+    built_at = datetime.now().strftime("%Y-%m-%d %H:%M")
     html = render(card, results, upcoming, built_at)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(html)

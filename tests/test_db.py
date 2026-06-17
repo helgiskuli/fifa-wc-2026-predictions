@@ -1,3 +1,5 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -337,7 +339,12 @@ def test_upsert_predictions_writes_pregame_kind(con):
         "FROM predictions WHERE match_id='m1'"
     ).fetchone()
     assert row[:3] == (1, 0, "pregame")
-    assert str(row[3]) == "2026-06-10"
+    assert row[3] == date(2026, 6, 10)
+
+
+def test_upsert_predictions_rejects_empty_kind(con):
+    with pytest.raises(ValueError):
+        db.upsert_predictions(con, _pred_df("m1", 1, 0), "", "2026-06-10")
 
 
 def test_upsert_predictions_overwrites_same_kind_only(con):
