@@ -10,6 +10,9 @@ or a re-seed from refreshed CSVs).
 
 Do this:
 
+0. (Optional) Run `uv run python -m scripts.fetch_results` to pull the latest
+   finished results into the DB before refitting. It reports any score changes;
+   run with `--dry-run` first to preview. Skip if results are already current.
 1. Run `uv run python -m scripts.run_schedule`. It warm-starts from the
    cached fit, so this should take seconds, not ~95s. Note the printed
    `Forecasting as-of <date>` line and confirm the fit converged
