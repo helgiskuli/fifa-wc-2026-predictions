@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WC 2026 - model scoreboard</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#777; --line:#eee; --green:#0b3d2e; --hit:#137333; }
+  * { box-sizing: border-box; }
+  body { font: 15px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif;
+         color: var(--ink); margin: 0; background: #fafafa; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 18px 60px; }
+  header { display: flex; align-items: baseline; justify-content: space-between;
+           flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0; }
+  .built { color: var(--muted); font-size: 13px; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+           margin-bottom: 26px; }
+  .card { background: var(--green); color: #fff; border-radius: 10px;
+          padding: 16px; text-align: center; }
+  .card .n { font-size: 28px; font-weight: 800; line-height: 1.1; }
+  .card .l { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+             opacity: .85; margin-top: 4px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--muted); border-bottom: 2px solid var(--line);
+       padding-bottom: 6px; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 5px 6px; }
+  td { padding: 5px 6px; border-top: 1px solid var(--line); }
+  td.num, th.num { text-align: center; font-variant-numeric: tabular-nums; }
+  tr.hit td.pts { color: var(--hit); font-weight: 700; }
+  .conf { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .empty { color: var(--muted); font-style: italic; padding: 8px 6px; }
+  @media (max-width: 700px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .cols { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>WC 2026 - model scoreboard</h1>
+    <span class="built">built {{ built_at }}</span>
+  </header>
+
+  <section class="cards">
+    <div class="card"><div class="n">{{ card.points }}</div><div class="l">points</div></div>
+    <div class="card"><div class="n">{{ card.outcome_pct }}%</div><div class="l">outcome</div></div>
+    <div class="card"><div class="n">{{ card.exact_pct }}%</div><div class="l">exact</div></div>
+    <div class="card"><div class="n">{{ card.pts_per_match }}</div><div class="l">pts / match</div></div>
+  </section>
+
+  <div class="cols">
+    <section>
+      <h2>Results so far ({{ card.matches }})</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Match</th><th class="num">Pred</th>
+          <th class="num">Actual</th><th class="num">Pts</th></tr></thead>
+        <tbody>
+        {% for r in results %}
+          <tr class="{{ 'hit' if r.outcome_ok else '' }}">
+            <td>{{ r.day }}</td>
+            <td>{{ r.home_team }} &ndash; {{ r.away_team }}</td>
+            <td class="num">{{ r.pred_h }}&ndash;{{ r.pred_a }}</td>
+            <td class="num">{{ r.actual_h }}&ndash;{{ r.actual_a }}</td>
+            <td class="num pts">{{ r.points }}</td>
+          </tr>
+        {% else %}
+          <tr><td class="empty" colspan="5">No scored matches yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Upcoming ({{ upcoming|length }})</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Match</th><th class="num">Pick</th>
+          <th class="num">Conf</th></tr></thead>
+        <tbody>
+        {% for u in upcoming %}
+          <tr>
+            <td>{{ u.day }}</td>
+            <td>{{ u.home_team }} &ndash; {{ u.away_team }}</td>
+            <td class="num">{{ u.pred_h }}&ndash;{{ u.pred_a }}</td>
+            <td class="num conf">{{ u.conf_pct }}%</td>
+          </tr>
+        {% else %}
+          <tr><td class="empty" colspan="4">No upcoming fixtures.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</div>
+</body>
+</html>
