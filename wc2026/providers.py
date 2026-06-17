@@ -55,6 +55,41 @@ def _httpx_get(url: str) -> str:
     return resp.text
 
 
+class Martj42CsvProvider:
+    """The martj42/international_results GitHub feed: the full historical corpus
+    plus WC matches once played (lagged). Names already match the DB (the DB was
+    seeded from this feed), so no name mapping. Played matches only."""
+
+    name = "martj42"
+    source = "upstream"
+
+    def __init__(self, http_get: Callable[[str], str] | None = None,
+                 url: str = MARTJ42_RESULTS_URL) -> None:
+        self._get = http_get or _httpx_get
+        self._url = url
+
+    def fetch(self) -> list[MatchRecord]:
+        df = pd.read_csv(io.StringIO(self._get(self._url)), na_values=["NA"])
+        df["neutral"] = df["neutral"].astype("string").str.upper().eq("TRUE")
+        out: list[MatchRecord] = []
+        for r in df.itertuples(index=False):
+            played = pd.notna(r.home_score) and pd.notna(r.away_score)
+            out.append(MatchRecord(
+                date=str(r.date),
+                home_team=r.home_team,
+                away_team=r.away_team,
+                status="FINISHED" if played else "SCHEDULED",
+                source=self.source,
+                home_score=int(r.home_score) if played else None,
+                away_score=int(r.away_score) if played else None,
+                tournament=None if pd.isna(r.tournament) else r.tournament,
+                neutral=bool(r.neutral),
+                city=None if pd.isna(r.city) else r.city,
+                country=None if pd.isna(r.country) else r.country,
+            ))
+        return out
+
+
 class LiveApiProvider:
     """Fresh WC scores + emerging knockout fixtures. Concrete API chosen later
     (see docs/superpowers/specs/2026-06-16-auto-fetcher-design.md). Reads its
