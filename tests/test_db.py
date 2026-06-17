@@ -1,3 +1,5 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 
@@ -54,6 +56,14 @@ def _seed_committed(con, mid, ph, pa):
     )
 
 
+def _seed_pregame(con, mid, ph, pa):
+    con.execute(
+        "INSERT INTO predictions (match_id, kind, pred_home_goals, "
+        "pred_away_goals, outcome) VALUES (?, 'pregame', ?, ?, 'H')",
+        [mid, ph, pa],
+    )
+
+
 def test_report_view_points_match_score_prediction(con):
     cfg = ScoringConfig()
     cases = [("m1", 2, 1, 2, 1), ("m2", 1, 0, 0, 2), ("m3", 1, 1, 2, 0)]
@@ -62,6 +72,39 @@ def test_report_view_points_match_score_prediction(con):
         _seed_committed(con, mid, ph, pa)
     rows = con.execute(
         "SELECT match_id, points FROM v_model_report ORDER BY match_id"
+    ).fetchall()
+    got = {mid: pts for mid, pts in rows}
+    for mid, ph, pa, ah, ay in cases:
+        assert got[mid] == score_prediction(ph, pa, ah, ay, cfg)
+
+
+def test_site_report_uses_pregame_when_no_committed(con):
+    _seed_match(con, "m1", "H", "A", 2, 1)
+    _seed_pregame(con, "m1", 2, 1)
+    row = con.execute(
+        "SELECT pred_h, pred_a, points FROM v_site_report WHERE match_id='m1'"
+    ).fetchone()
+    assert row == (2, 1, 6)  # exact: 3 outcome + 1 + 1 home/away goals + 1 gd
+
+
+def test_site_report_prefers_committed_over_pregame(con):
+    _seed_match(con, "m1", "H", "A", 2, 1)
+    _seed_pregame(con, "m1", 0, 0)        # would score differently
+    _seed_committed(con, "m1", 2, 1)      # committed wins
+    row = con.execute(
+        "SELECT pred_h, pred_a FROM v_site_report WHERE match_id='m1'"
+    ).fetchone()
+    assert row == (2, 1)
+
+
+def test_site_report_points_match_score_prediction(con):
+    cfg = ScoringConfig()
+    cases = [("m1", 2, 1, 2, 1), ("m2", 1, 0, 0, 2), ("m3", 1, 1, 2, 0)]
+    for mid, ph, pa, ah, ay in cases:
+        _seed_match(con, mid, "H", "A", ah, ay)
+        _seed_pregame(con, mid, ph, pa)
+    rows = con.execute(
+        "SELECT match_id, points FROM v_site_report ORDER BY match_id"
     ).fetchall()
     got = {mid: pts for mid, pts in rows}
     for mid, ph, pa, ah, ay in cases:
@@ -287,3 +330,29 @@ def test_upsert_matches_inserts_new_and_updates_score_only(con):
 def test_upsert_matches_empty_is_noop(con):
     db.upsert_matches(con, [])
     assert con.execute("SELECT count(*) FROM matches").fetchone()[0] == 0
+
+
+def test_upsert_predictions_writes_pregame_kind(con):
+    db.upsert_predictions(con, _pred_df("m1", 1, 0), "pregame", "2026-06-10")
+    row = con.execute(
+        "SELECT pred_home_goals, pred_away_goals, kind, model_as_of "
+        "FROM predictions WHERE match_id='m1'"
+    ).fetchone()
+    assert row[:3] == (1, 0, "pregame")
+    assert row[3] == date(2026, 6, 10)
+
+
+def test_upsert_predictions_rejects_empty_kind(con):
+    with pytest.raises(ValueError):
+        db.upsert_predictions(con, _pred_df("m1", 1, 0), "", "2026-06-10")
+
+
+def test_upsert_predictions_overwrites_same_kind_only(con):
+    db.upsert_predictions(con, _pred_df("m1", 1, 0), "pregame", "2026-06-10")
+    db.upsert_predictions(con, _pred_df("m1", 2, 2), "pregame", "2026-06-11")
+    db.upsert_latest_predictions(con, _pred_df("m1", 3, 3), "2026-06-12")
+    rows = con.execute(
+        "SELECT kind, pred_home_goals FROM predictions "
+        "WHERE match_id='m1' ORDER BY kind"
+    ).fetchall()
+    assert rows == [("latest", 3), ("pregame", 2)]  # pregame overwritten; latest separate

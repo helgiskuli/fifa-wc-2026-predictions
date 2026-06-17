@@ -66,17 +66,18 @@ _TABLES = [
 
 
 def init_schema(con: duckdb.DuckDBPyConnection) -> None:
-    """Idempotently create the four tables and the v_model_report view."""
+    """Idempotently create the four tables and the v_model_report and v_site_report views."""
     for stmt in _TABLES:
         con.execute(stmt)
     _create_report_view(con)
 
 
-def _create_report_view(con: duckdb.DuckDBPyConnection) -> None:
-    # Office-pool scoring: a=3 correct outcome, b=1 per correct team goal
-    # count, c=1 correct signed goal difference. Mirrors predict.score_prediction.
-    con.execute("""
-        CREATE OR REPLACE VIEW v_model_report AS
+def _scored_report_select(pred_subquery: str) -> str:
+    """The office-pool scoring SELECT, scoring whichever rows `pred_subquery`
+    (aliased `p`, exposing pred_home_goals/pred_away_goals) supplies against
+    actual results. a=3 correct outcome, b=1 per correct team goal count,
+    c=1 correct signed goal difference. Mirrors predict.score_prediction."""
+    return f"""
         SELECT
             m.match_id, m.date, m.home_team, m.away_team,
             m.home_score AS actual_h, m.away_score AS actual_a,
@@ -96,10 +97,34 @@ def _create_report_view(con: duckdb.DuckDBPyConnection) -> None:
             + 1 * ((p.pred_home_goals - p.pred_away_goals)
                      = (m.home_score - m.away_score))::INT )    AS points
         FROM matches m
-        JOIN predictions p
-          ON p.match_id = m.match_id AND p.kind = 'committed'
+        JOIN ({pred_subquery}) p ON p.match_id = m.match_id
         WHERE m.home_score IS NOT NULL AND m.away_score IS NOT NULL
-    """)
+    """
+
+
+def _create_report_view(con: duckdb.DuckDBPyConnection) -> None:
+    # v_model_report: committed picks only (model-evaluation view, unchanged).
+    committed = ("SELECT match_id, pred_home_goals, pred_away_goals "
+                 "FROM predictions WHERE kind = 'committed'")
+    con.execute(
+        "CREATE OR REPLACE VIEW v_model_report AS "
+        + _scored_report_select(committed)
+    )
+    # v_site_report: best available pre-game pick per match -- a real committed
+    # lock if one exists, otherwise the reconstructed pregame pick.
+    site = """
+        SELECT match_id, pred_home_goals, pred_away_goals
+        FROM predictions
+        WHERE kind IN ('committed', 'pregame')
+        QUALIFY row_number() OVER (
+            PARTITION BY match_id
+            ORDER BY CASE kind WHEN 'committed' THEN 0 ELSE 1 END
+        ) = 1
+    """
+    con.execute(
+        "CREATE OR REPLACE VIEW v_site_report AS "
+        + _scored_report_select(site)
+    )
 
 
 _MATCH_COLS = ["date", "home_team", "away_team", "home_score", "away_score",
@@ -127,15 +152,18 @@ _PRED_COLS = ["match_id", "kind", "pred_home_goals", "pred_away_goals",
               "p_away_g", "p_gd", "ep", "model_as_of", "forecast_ts"]
 
 
-def upsert_latest_predictions(
+def upsert_predictions(
     con: duckdb.DuckDBPyConnection,
     df: pd.DataFrame,
+    kind: str,
     model_as_of: str | pd.Timestamp,
     now: str | pd.Timestamp | None = None,
 ) -> None:
-    """Write/replace the single kind='latest' row per match."""
+    """Write/replace the single row of `kind` per match (PK is match_id+kind)."""
+    if not kind:
+        raise ValueError("kind must be a non-empty string")
     rows = df.copy()
-    rows["kind"] = "latest"
+    rows["kind"] = kind
     rows["model_as_of"] = pd.Timestamp(model_as_of)
     rows["forecast_ts"] = pd.Timestamp(now) if now is not None else pd.Timestamp.now("UTC")
     rows = rows[_PRED_COLS]
@@ -145,6 +173,16 @@ def upsert_latest_predictions(
         f"SELECT {', '.join(_PRED_COLS)} FROM _preds"
     )
     con.unregister("_preds")
+
+
+def upsert_latest_predictions(
+    con: duckdb.DuckDBPyConnection,
+    df: pd.DataFrame,
+    model_as_of: str | pd.Timestamp,
+    now: str | pd.Timestamp | None = None,
+) -> None:
+    """Write/replace the single kind='latest' row per match."""
+    upsert_predictions(con, df, "latest", model_as_of, now)
 
 
 def commit_predictions(

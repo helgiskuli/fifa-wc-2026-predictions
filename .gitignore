@@ -11,3 +11,6 @@ wheels/
 
 # fitted-model cache
 model_cache.json
+
+# brainstorm visual-companion scratch
+.superpowers/
