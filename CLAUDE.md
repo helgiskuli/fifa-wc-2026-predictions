@@ -57,6 +57,23 @@ findings that are **not obvious from the code** and should not be redone.
   via martj42; `--corpus-refresh` does the full historical feed; `--dry-run`
   reports without writing (opens the DB read-only).
 
+## HTML scoreboard (sub-project 3)
+
+- `scripts/backfill_predictions.py` reconstructs honest pre-game picks for
+  played WC matches: it refits the model as-of the eve of each played date
+  (the backtest's leak-free pattern) and writes one EP-optimal pick per match
+  under prediction kind **`pregame`**. It warm-starts but **does not** write
+  `model_cache.json` (that is run_schedule's as-of-today cache) and never
+  touches `latest`/`committed`. Re-run it after each new matchday.
+- `db.v_site_report` scores the best available pre-game pick per match
+  (**`committed` if one exists, else `pregame`**) against results, reusing the
+  `v_model_report` scoring SQL via `_scored_report_select`. `v_model_report`
+  itself (committed-only) is unchanged.
+- `scripts/build_site.py` is pure read + render: it reads `v_site_report`
+  (played) + `latest` (upcoming) and renders `templates/site.html.j2` (Jinja2)
+  into a single self-contained `docs/index.html`. Refresh cadence: run
+  `backfill_predictions` then `build_site` after a matchday.
+
 ## Decided approach — do NOT re-litigate
 
 From the project kickoff (`wc-2026-predictor-kickoff.md`):
