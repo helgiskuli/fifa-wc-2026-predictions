@@ -4,7 +4,10 @@ No network, no raw SQL: providers fetch, `db` writes, this decides what to write
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+
+import duckdb
 
 from . import db
 from .providers import MatchRecord
@@ -35,7 +38,8 @@ def _row(mid: str, r: MatchRecord, *, played: bool) -> dict:
     }
 
 
-def reconcile(con, records, write: bool = True) -> ChangeReport:
+def reconcile(con: duckdb.DuckDBPyConnection, records: Iterable[MatchRecord],
+              write: bool = True) -> ChangeReport:
     """Apply the write policy to `records` and (unless write=False) persist via
     db.upsert_matches. Final-only; overwrite a present score only when it
     differs; insert new matches/fixtures; never silently clobber."""
@@ -44,10 +48,14 @@ def reconcile(con, records, write: bool = True) -> ChangeReport:
             "SELECT match_id, home_score, away_score FROM matches"
         ).fetchall()
     }
+    # Collapse any duplicate match_id within the batch (last wins) so the report
+    # counts each match once and in-batch corrections are deterministic.
+    by_id: dict[str, MatchRecord] = {}
+    for r in records:
+        by_id[db.make_match_id(r.date, r.home_team, r.away_team)] = r
     rep = ChangeReport()
     to_write: list[dict] = []
-    for r in records:
-        mid = db.make_match_id(r.date, r.home_team, r.away_team)
+    for mid, r in by_id.items():
         finished = r.status == "FINISHED"
         if mid not in current:
             to_write.append(_row(mid, r, played=finished))

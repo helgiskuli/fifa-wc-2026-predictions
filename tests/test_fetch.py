@@ -44,6 +44,18 @@ def test_martj42_provider_parses_csv():
     assert fr.stage is None and fr.group_label is None
 
 
+def test_martj42_provider_handles_blank_neutral_and_missing_optionals():
+    csv = (
+        "date,home_team,away_team,home_score,away_score,tournament,neutral\n"
+        "2026-06-11,France,Senegal,1,0,FIFA World Cup,\n"  # blank neutral, no city/country cols
+    )
+    p = providers.Martj42CsvProvider(http_get=lambda url: csv)
+    (rec,) = p.fetch()
+    assert rec.neutral is False        # blank -> not neutral, no bool(<NA>) crash
+    assert rec.city is None            # column absent -> None
+    assert rec.country is None
+
+
 @pytest.fixture
 def con():
     c = db.connect(":memory:")
@@ -84,6 +96,19 @@ def test_reconcile_inserts_updates_skips_and_is_idempotent(con):
     rep2 = fetch.reconcile(con, records)
     assert rep2.score_changes == []
     assert rep2.inserted == []
+
+
+def test_reconcile_dedupes_duplicate_match_id_in_batch(con):
+    # same match listed twice in one batch -> counted once, last value wins
+    records = [
+        _rec("2026-06-12", "Brazil", "Haiti", "FINISHED", 1, 0),
+        _rec("2026-06-12", "Brazil", "Haiti", "FINISHED", 3, 0),
+    ]
+    rep = fetch.reconcile(con, records)
+    assert rep.inserted == ["20260612-brazil-haiti"]   # once, not twice
+    assert con.execute(
+        "SELECT home_score, away_score FROM matches WHERE match_id='20260612-brazil-haiti'"
+    ).fetchone() == (3, 0)                              # last wins
 
 
 def test_reconcile_skips_nonfinal_for_existing(con):

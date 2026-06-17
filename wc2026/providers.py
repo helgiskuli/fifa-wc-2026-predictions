@@ -47,6 +47,12 @@ class ResultsProvider(Protocol):
         ...
 
 
+def _opt(row, name: str):
+    """An optional CSV column: missing column or NA cell -> None."""
+    value = getattr(row, name, None)
+    return None if value is None or pd.isna(value) else value
+
+
 def _httpx_get(url: str) -> str:
     import httpx
 
@@ -70,7 +76,11 @@ class Martj42CsvProvider:
 
     def fetch(self) -> list[MatchRecord]:
         df = pd.read_csv(io.StringIO(self._get(self._url)), na_values=["NA"])
-        df["neutral"] = df["neutral"].astype("string").str.upper().eq("TRUE")
+        # A blank/NA neutral cell is treated as not-neutral (fillna), so a sparse
+        # feed never trips bool(<NA>).
+        df["neutral"] = (
+            df["neutral"].astype("string").str.upper().eq("TRUE").fillna(False)
+        )
         out: list[MatchRecord] = []
         for r in df.itertuples(index=False):
             played = pd.notna(r.home_score) and pd.notna(r.away_score)
@@ -82,10 +92,10 @@ class Martj42CsvProvider:
                 source=self.source,
                 home_score=int(r.home_score) if played else None,
                 away_score=int(r.away_score) if played else None,
-                tournament=None if pd.isna(r.tournament) else r.tournament,
+                tournament=_opt(r, "tournament"),
                 neutral=bool(r.neutral),
-                city=None if pd.isna(r.city) else r.city,
-                country=None if pd.isna(r.country) else r.country,
+                city=_opt(r, "city"),
+                country=_opt(r, "country"),
             ))
         return out
 

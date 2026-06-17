@@ -12,10 +12,11 @@ from __future__ import annotations
 import argparse
 
 from wc2026 import db, fetch
-from wc2026.providers import LiveApiProvider, Martj42CsvProvider, MatchRecord
+from wc2026.providers import (LiveApiProvider, Martj42CsvProvider, MatchRecord,
+                              ResultsProvider)
 
 
-def build_provider(source: str):
+def build_provider(source: str) -> ResultsProvider:
     if source == "martj42":
         return Martj42CsvProvider()
     if source == "live":

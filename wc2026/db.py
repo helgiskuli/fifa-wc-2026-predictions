@@ -188,7 +188,8 @@ _MATCH_UPSERT_COLS = ["match_id", "date", "home_team", "away_team",
                       "source"]
 
 
-def upsert_matches(con: duckdb.DuckDBPyConnection, rows) -> None:
+def upsert_matches(con: duckdb.DuckDBPyConnection,
+                   rows: list[dict] | pd.DataFrame) -> None:
     """Insert new matches (full metadata) and, on match_id conflict, update ONLY
     the scores. Existing labels/source/venue are preserved (martj42 backfill
     rows carry no WC labels). `rows` is a list of dicts or a DataFrame with the
@@ -210,7 +211,8 @@ def upsert_matches(con: duckdb.DuckDBPyConnection, rows) -> None:
     con.unregister("_um")
 
 
-def upsert_results(con: duckdb.DuckDBPyConnection, rows) -> None:
+def upsert_results(con: duckdb.DuckDBPyConnection,
+                   rows: list[dict] | pd.DataFrame) -> None:
     """Fill scores for existing matches (the fetcher's write hook). `rows` is a
     list of dicts or a DataFrame with match_id, home_score, away_score."""
     df = pd.DataFrame(rows)
