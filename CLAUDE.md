@@ -76,6 +76,12 @@ findings that are **not obvious from the code** and should not be redone.
   (played) + `latest` (upcoming) and renders `templates/site.html.j2` (Jinja2)
   into a single self-contained `docs/index.html`. Refresh cadence: run
   `backfill_predictions` then `build_site` after a matchday.
+- `.github/workflows/scoreboard.yml` runs that pipeline daily (and on
+  `workflow_dispatch`) and deploys the page to GitHub Pages
+  (<https://helgiskuli.github.io/fifa-wc-2026-predictions/>). It is
+  **stateless** by design: CI commits nothing, rebuilding from the committed
+  DB + a fresh fetch each run. The committed `data/wc2026.duckdb` stays the
+  source of truth, advanced locally via `/reforecast`.
 
 ## Decided approach — do NOT re-litigate
 

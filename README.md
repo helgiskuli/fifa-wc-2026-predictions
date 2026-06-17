@@ -138,7 +138,8 @@ are predicted automatically.
 A single self-contained `docs/index.html` page tracks how the model is doing:
 predicted-vs-actual for played matches (with points earned), a headline
 accuracy summary, and the current picks for upcoming fixtures. It is plain
-HTML with inline CSS — open it locally, or serve `docs/` via GitHub Pages.
+HTML with inline CSS: open it locally, or view the live auto-deployed copy
+(see [Hosting](#hosting)).
 
 ```bash
 uv run python -m scripts.backfill_predictions   # honest pre-game picks for played matches
@@ -152,6 +153,22 @@ warm-starts, so only the first eve-date fit is slow, and it never overwrites
 `model_cache.json`. `build_site` is pure read + render (opens the DB
 read-only). Run both after a matchday — the `/reforecast` command does this as
 part of its flow.
+
+### Hosting
+
+The scoreboard is published at
+**<https://helgiskuli.github.io/fifa-wc-2026-predictions/>** by a GitHub Actions
+workflow (`.github/workflows/scoreboard.yml`). It runs daily (07:00 UTC) and
+on demand (the Actions tab, or `gh workflow run scoreboard.yml`); each run
+fetches the latest results, refits, rebuilds `docs/index.html`, and deploys it
+to GitHub Pages.
+
+The deploy is **stateless**: the workflow commits nothing back. It rebuilds
+from the committed DuckDB (the historical seed) plus a fresh results fetch, so
+git history stays clean. The committed `data/wc2026.duckdb` remains the
+source of truth, advanced locally via `/reforecast`. Pages serves from the
+Actions build (not the `docs/` branch source), and only the rendered page is
+published, not the `docs/superpowers/` specs.
 
 ## Other scripts
 
@@ -191,5 +208,6 @@ scripts/       # demo, run_schedule, commit_picks, migrate_to_duckdb, backtest,
 templates/     # site.html.j2 (Jinja2 scoreboard template)
 data/          # wc2026.duckdb (source of truth) + seed CSVs
 docs/          # index.html (generated scoreboard)
+.github/workflows/scoreboard.yml   # scheduled build + deploy to GitHub Pages
 predictions.csv
 ```
