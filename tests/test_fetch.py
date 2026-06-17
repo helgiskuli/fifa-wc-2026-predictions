@@ -41,3 +41,70 @@ def test_martj42_provider_parses_csv():
     assert fr.source == "upstream"
     assert fr.tournament == "FIFA World Cup"
     assert fr.stage is None and fr.group_label is None
+
+
+# NOTE: `providers` and `MatchRecord` are already imported at the top of this
+# file. Import only the new modules here to avoid a redefinition lint.
+from wc2026 import db, fetch
+
+
+@pytest.fixture
+def con():
+    c = db.connect(":memory:")
+    db.init_schema(c)
+    yield c
+    c.close()
+
+
+def _rec(date, h, a, status, hs=None, as_=None, tour="FIFA World Cup"):
+    return MatchRecord(date=date, home_team=h, away_team=a, status=status,
+                       source="upstream", home_score=hs, away_score=as_,
+                       tournament=tour, neutral=True)
+
+
+def test_reconcile_inserts_updates_skips_and_is_idempotent(con):
+    # existing unplayed match in the DB
+    con.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, source) "
+        "VALUES ('20260611-france-senegal', DATE '2026-06-11', 'France', "
+        "'Senegal', 'wc2026')"
+    )
+    records = [
+        _rec("2026-06-11", "France", "Senegal", "FINISHED", 1, 0),   # fills score
+        _rec("2026-06-12", "Brazil", "Haiti", "FINISHED", 3, 0),     # new played
+        _rec("2026-06-13", "Spain", "Japan", "SCHEDULED"),           # new fixture
+        _rec("2026-06-14", "Italy", "Peru", "IN_PLAY"),              # new, non-final
+    ]
+    rep = fetch.reconcile(con, records)
+    assert rep.score_changes == [("20260611-france-senegal", (None, None), (1, 0))]
+    assert "20260612-brazil-haiti" in rep.inserted
+    assert "20260613-spain-japan" in rep.inserted          # unplayed fixture inserted
+    # France score now in DB
+    assert con.execute(
+        "SELECT home_score FROM matches WHERE match_id='20260611-france-senegal'"
+    ).fetchone()[0] == 1
+
+    # second run with the same records: no changes
+    rep2 = fetch.reconcile(con, records)
+    assert rep2.score_changes == []
+    assert rep2.inserted == []
+
+
+def test_reconcile_skips_nonfinal_for_existing(con):
+    con.execute(
+        "INSERT INTO matches (match_id, date, home_team, away_team, source) "
+        "VALUES ('20260611-france-senegal', DATE '2026-06-11', 'France', "
+        "'Senegal', 'wc2026')"
+    )
+    rep = fetch.reconcile(con, [_rec("2026-06-11", "France", "Senegal", "IN_PLAY")])
+    assert rep.skipped_nonfinal == ["20260611-france-senegal"]
+    assert con.execute(
+        "SELECT home_score FROM matches WHERE match_id='20260611-france-senegal'"
+    ).fetchone()[0] is None
+
+
+def test_reconcile_dry_run_writes_nothing(con):
+    rep = fetch.reconcile(con, [_rec("2026-06-12", "Brazil", "Haiti", "FINISHED", 3, 0)],
+                          write=False)
+    assert "20260612-brazil-haiti" in rep.inserted
+    assert con.execute("SELECT count(*) FROM matches").fetchone()[0] == 0
