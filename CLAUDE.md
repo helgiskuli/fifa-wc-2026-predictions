@@ -20,7 +20,8 @@ findings that are **not obvious from the code** and should not be redone.
   classifier, fixture extraction.
 - `wc2026/db.py` — owns all DuckDB access: `connect`, `init_schema`,
   deterministic `make_match_id`, `load_matches`, prediction upsert/commit
-  helpers, `upsert_results`, and the `v_model_report` scoring view.
+  helpers, `upsert_results`, and the `v_model_report` / `v_site_report`
+  scoring views (shared SQL via `_scored_report_select`).
 - `wc2026/model.py` — bivariate-Poisson / Dixon-Coles weighted-MLE `fit()`,
   `FittedModel` (rates, score matrix, `save`/`load`, warm-start).
 - `wc2026/predict.py` — expected-points objective, `best_prediction`, and
@@ -39,9 +40,11 @@ findings that are **not obvious from the code** and should not be redone.
   collapses the lone corpus case (1974 Tahiti vs New Caledonia) into one row.
   Accepted (zero-weight friendly).
 - Predictions are stored as `committed` (locked ~90 min pre-kickoff via
-  `scripts.commit_picks`, immutable without `--force`) and `latest` (overwritten
-  each `run_schedule`). `v_model_report` joins committed picks to actual results
-  for model evaluation.
+  `scripts.commit_picks`, immutable without `--force`), `latest` (overwritten
+  each `run_schedule`), and `pregame` (honest eve-of-match picks for played
+  games, written by `scripts.backfill_predictions`; see the HTML scoreboard
+  section). `v_model_report` joins committed picks to actual results for model
+  evaluation; `v_site_report` (committed-or-pregame) backs the scoreboard.
 
 ## Auto-fetcher
 

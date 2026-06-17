@@ -82,6 +82,13 @@ uv run python -m scripts.commit_picks 2026-06-16   # snapshot latest -> committe
 The `v_model_report` view joins committed picks to actual results for "where was
 the model right?" analysis. `wc2026/db.py` owns all database access.
 
+Predictions are stored under three kinds: `latest` (the current forecast,
+overwritten each `run_schedule`), `committed` (the locked pre-game pick), and
+`pregame` (an honest pre-game pick reconstructed for already-played matches, see
+[Scoreboard](#scoreboard)). The `v_site_report` view scores the best available
+pre-game pick per match (`committed` if present, else `pregame`) against results
+and backs the HTML scoreboard.
+
 Pull match results into the DB instead of editing data by hand:
 
 ```bash
@@ -126,11 +133,33 @@ When the knockout bracket is set, add those fixtures as `NA`-score rows
 (`date, home_team, away_team, tournament=FIFA World Cup, neutral`) and they
 are predicted automatically.
 
+## Scoreboard
+
+A single self-contained `docs/index.html` page tracks how the model is doing:
+predicted-vs-actual for played matches (with points earned), a headline
+accuracy summary, and the current picks for upcoming fixtures. It is plain
+HTML with inline CSS — open it locally, or serve `docs/` via GitHub Pages.
+
+```bash
+uv run python -m scripts.backfill_predictions   # honest pre-game picks for played matches
+uv run python -m scripts.build_site             # render docs/index.html
+```
+
+`backfill_predictions` reconstructs an honest pre-game pick for each played
+match by refitting the model **as-of the eve of that match** (the same
+leak-free pattern the backtests use) and stores it as the `pregame` kind. It
+warm-starts, so only the first eve-date fit is slow, and it never overwrites
+`model_cache.json`. `build_site` is pure read + render (opens the DB
+read-only). Run both after a matchday — the `/reforecast` command does this as
+part of its flow.
+
 ## Other scripts
 
 | Script | Purpose |
 |---|---|
 | `scripts/demo.py` | Fit + print per-team strengths and sample predictions |
+| `scripts/backfill_predictions.py` | Reconstruct honest pre-game (`pregame`) picks for played matches |
+| `scripts/build_site.py` | Render the scoreboard to `docs/index.html` |
 | `scripts/backtest.py [2018\|2022]` | Refit as-of a past WC eve and score all 64 matches |
 | `scripts/diagnose_goals.py` | Goal-volume / venue calibration diagnostics |
 | `scripts/compare_weights.py` | Backtest competition-tier weighting schemes |
@@ -157,7 +186,10 @@ wc2026/
   db.py        # all DuckDB access: schema, match_id, read/write, scoring view
   model.py     # bivariate-Poisson / Dixon-Coles fit, score matrix, save/load
   predict.py   # expected-points objective + scoreline pick, point scoring
-scripts/       # demo, run_schedule, commit_picks, migrate_to_duckdb, backtest, ...
+scripts/       # demo, run_schedule, commit_picks, migrate_to_duckdb, backtest,
+               # backfill_predictions, build_site, ...
+templates/     # site.html.j2 (Jinja2 scoreboard template)
 data/          # wc2026.duckdb (source of truth) + seed CSVs
+docs/          # index.html (generated scoreboard)
 predictions.csv
 ```
