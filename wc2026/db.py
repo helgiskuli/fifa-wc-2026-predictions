@@ -66,7 +66,7 @@ _TABLES = [
 
 
 def init_schema(con: duckdb.DuckDBPyConnection) -> None:
-    """Idempotently create the four tables and the v_model_report view."""
+    """Idempotently create the four tables and the v_model_report and v_site_report views."""
     for stmt in _TABLES:
         con.execute(stmt)
     _create_report_view(con)
