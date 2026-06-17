@@ -127,15 +127,16 @@ _PRED_COLS = ["match_id", "kind", "pred_home_goals", "pred_away_goals",
               "p_away_g", "p_gd", "ep", "model_as_of", "forecast_ts"]
 
 
-def upsert_latest_predictions(
+def upsert_predictions(
     con: duckdb.DuckDBPyConnection,
     df: pd.DataFrame,
+    kind: str,
     model_as_of: str | pd.Timestamp,
     now: str | pd.Timestamp | None = None,
 ) -> None:
-    """Write/replace the single kind='latest' row per match."""
+    """Write/replace the single row of `kind` per match (PK is match_id+kind)."""
     rows = df.copy()
-    rows["kind"] = "latest"
+    rows["kind"] = kind
     rows["model_as_of"] = pd.Timestamp(model_as_of)
     rows["forecast_ts"] = pd.Timestamp(now) if now is not None else pd.Timestamp.now("UTC")
     rows = rows[_PRED_COLS]
@@ -145,6 +146,16 @@ def upsert_latest_predictions(
         f"SELECT {', '.join(_PRED_COLS)} FROM _preds"
     )
     con.unregister("_preds")
+
+
+def upsert_latest_predictions(
+    con: duckdb.DuckDBPyConnection,
+    df: pd.DataFrame,
+    model_as_of: str | pd.Timestamp,
+    now: str | pd.Timestamp | None = None,
+) -> None:
+    """Write/replace the single kind='latest' row per match."""
+    upsert_predictions(con, df, "latest", model_as_of, now)
 
 
 def commit_predictions(

@@ -287,3 +287,24 @@ def test_upsert_matches_inserts_new_and_updates_score_only(con):
 def test_upsert_matches_empty_is_noop(con):
     db.upsert_matches(con, [])
     assert con.execute("SELECT count(*) FROM matches").fetchone()[0] == 0
+
+
+def test_upsert_predictions_writes_pregame_kind(con):
+    db.upsert_predictions(con, _pred_df("m1", 1, 0), "pregame", "2026-06-10")
+    row = con.execute(
+        "SELECT pred_home_goals, pred_away_goals, kind, model_as_of "
+        "FROM predictions WHERE match_id='m1'"
+    ).fetchone()
+    assert row[:3] == (1, 0, "pregame")
+    assert str(row[3]) == "2026-06-10"
+
+
+def test_upsert_predictions_overwrites_same_kind_only(con):
+    db.upsert_predictions(con, _pred_df("m1", 1, 0), "pregame", "2026-06-10")
+    db.upsert_predictions(con, _pred_df("m1", 2, 2), "pregame", "2026-06-11")
+    db.upsert_latest_predictions(con, _pred_df("m1", 3, 3), "2026-06-12")
+    rows = con.execute(
+        "SELECT kind, pred_home_goals FROM predictions "
+        "WHERE match_id='m1' ORDER BY kind"
+    ).fetchall()
+    assert rows == [("latest", 3), ("pregame", 2)]  # pregame overwritten; latest separate
