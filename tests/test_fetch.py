@@ -108,3 +108,26 @@ def test_reconcile_dry_run_writes_nothing(con):
                           write=False)
     assert "20260612-brazil-haiti" in rep.inserted
     assert con.execute("SELECT count(*) FROM matches").fetchone()[0] == 0
+
+
+from scripts import fetch_results
+
+
+def test_select_records_default_is_wc_2026_only():
+    recs = [
+        MatchRecord("2026-06-11", "France", "Senegal", "FINISHED", "upstream",
+                    tournament="FIFA World Cup"),
+        MatchRecord("2024-01-01", "Spain", "Italy", "FINISHED", "upstream",
+                    tournament="Friendly"),
+        MatchRecord("2022-12-18", "Argentina", "France", "FINISHED", "upstream",
+                    tournament="FIFA World Cup"),  # 2022, not this WC
+    ]
+    default = fetch_results.select_records(recs, corpus_refresh=False)
+    assert [r.home_team for r in default] == ["France"]
+    full = fetch_results.select_records(recs, corpus_refresh=True)
+    assert len(full) == 3
+
+
+def test_build_provider_unknown_raises():
+    with pytest.raises(SystemExit):
+        fetch_results.build_provider("nope")
