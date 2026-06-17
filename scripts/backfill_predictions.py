@@ -73,6 +73,7 @@ def main() -> None:
 
     con = db.connect(db.DB_PATH)
     try:
+        db.init_schema(con)  # ensure the predictions table + v_site_report exist
         for d in dates:
             as_of = d - timedelta(days=1)
             pre = PreprocessConfig(as_of=as_of)

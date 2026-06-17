@@ -1,7 +1,7 @@
 ---
 description: Refit the model on the latest results and report which picks changed
 argument-hint: (optional notes, e.g. "after round 2")
-allowed-tools: Bash(uv run python -m scripts.run_schedule), Bash(uv run python -m scripts.diff_predictions), Bash(git status:*), Bash(git diff:*)
+allowed-tools: Bash(uv run python -m scripts.run_schedule), Bash(uv run python -m scripts.diff_predictions), Bash(uv run python -m scripts.backfill_predictions), Bash(uv run python -m scripts.build_site), Bash(git status:*), Bash(git diff:*)
 ---
 
 Reforecast the World Cup sheet with the latest results. Assume the new scores
@@ -24,8 +24,14 @@ Do this:
    favourite's margin moving) — not every 1-0 ↔ 2-0 nudge.
 4. Sanity-check the pick distribution is still conservative (mostly
    1-0 / 0-1 / 2-1 / draws; no flood of 3-x). Flag it if it isn't.
-5. Remind the user to commit `predictions.csv` if it changed, and offer to
-   do it. Do **not** commit without their go-ahead.
+5. Rebuild the scoreboard so `docs/index.html` reflects the new results:
+   run `uv run python -m scripts.backfill_predictions` (adds honest pre-game
+   `pregame` picks for any newly-played matches; warm-started, so only the
+   first eve-date fit is slow), then `uv run python -m scripts.build_site`.
+   Confirm the printed scored/points/upcoming counts look right.
+6. Remind the user to commit what changed — `predictions.csv`, the regenerated
+   `docs/index.html`, and `data/wc2026.duckdb` (new `pregame` rows) — and offer
+   to do it. Do **not** commit without their go-ahead.
 
 If the run reports skipped fixtures (teams not in the fitted pool), surface
 them — that usually means a knockout fixture was added with a placeholder
