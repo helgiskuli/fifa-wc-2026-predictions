@@ -54,6 +54,14 @@ def _seed_committed(con, mid, ph, pa):
     )
 
 
+def _seed_pregame(con, mid, ph, pa):
+    con.execute(
+        "INSERT INTO predictions (match_id, kind, pred_home_goals, "
+        "pred_away_goals, outcome) VALUES (?, 'pregame', ?, ?, 'H')",
+        [mid, ph, pa],
+    )
+
+
 def test_report_view_points_match_score_prediction(con):
     cfg = ScoringConfig()
     cases = [("m1", 2, 1, 2, 1), ("m2", 1, 0, 0, 2), ("m3", 1, 1, 2, 0)]
@@ -62,6 +70,39 @@ def test_report_view_points_match_score_prediction(con):
         _seed_committed(con, mid, ph, pa)
     rows = con.execute(
         "SELECT match_id, points FROM v_model_report ORDER BY match_id"
+    ).fetchall()
+    got = {mid: pts for mid, pts in rows}
+    for mid, ph, pa, ah, ay in cases:
+        assert got[mid] == score_prediction(ph, pa, ah, ay, cfg)
+
+
+def test_site_report_uses_pregame_when_no_committed(con):
+    _seed_match(con, "m1", "H", "A", 2, 1)
+    _seed_pregame(con, "m1", 2, 1)
+    row = con.execute(
+        "SELECT pred_h, pred_a, points FROM v_site_report WHERE match_id='m1'"
+    ).fetchone()
+    assert row == (2, 1, 6)  # exact: 3 outcome + 1 + 1 home/away goals + 1 gd
+
+
+def test_site_report_prefers_committed_over_pregame(con):
+    _seed_match(con, "m1", "H", "A", 2, 1)
+    _seed_pregame(con, "m1", 0, 0)        # would score differently
+    _seed_committed(con, "m1", 2, 1)      # committed wins
+    row = con.execute(
+        "SELECT pred_h, pred_a FROM v_site_report WHERE match_id='m1'"
+    ).fetchone()
+    assert row == (2, 1)
+
+
+def test_site_report_points_match_score_prediction(con):
+    cfg = ScoringConfig()
+    cases = [("m1", 2, 1, 2, 1), ("m2", 1, 0, 0, 2), ("m3", 1, 1, 2, 0)]
+    for mid, ph, pa, ah, ay in cases:
+        _seed_match(con, mid, "H", "A", ah, ay)
+        _seed_pregame(con, mid, ph, pa)
+    rows = con.execute(
+        "SELECT match_id, points FROM v_site_report ORDER BY match_id"
     ).fetchall()
     got = {mid: pts for mid, pts in rows}
     for mid, ph, pa, ah, ay in cases:
