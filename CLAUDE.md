@@ -10,6 +10,11 @@ findings that are **not obvious from the code** and should not be redone.
   Do **not** use `python -m venv`, raw `pip`, or `pyenv`.
 - Python package is `wc2026/`; runnable entry points are `scripts/*` (run as
   modules: `uv run python -m scripts.run_schedule`).
+- **Model fits: always warm-start** (`FittedModel.load` / `model_cache.json`, `--cached`
+  where available). A cold fit takes ~95 s — run cold fits (diagnostics, backtests,
+  backfills) as background tasks, never inline.
+- Subagents/reviewers: your working directory is already this repo's root. Use
+  relative paths (`wc2026/…`, `scripts/…`); never guess absolute paths.
 
 ## Architecture (one line each)
 
